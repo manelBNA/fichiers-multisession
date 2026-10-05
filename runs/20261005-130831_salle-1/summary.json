@@ -1,0 +1,117 @@
+{
+  "label": "",
+  "termine_normalement": true,
+  "duree_s": 38.784,
+  "phrases": 3,
+  "mots_par_phrase": {
+    "n": 3,
+    "moyenne": 10.667,
+    "mediane": 12,
+    "p90": 15,
+    "max": 15
+  },
+  "raisons_de_coupe": {
+    "sat+pause": 1,
+    "sat": 1,
+    "flush": 1
+  },
+  "langues_parlees": {
+    "de": 3
+  },
+  "phrases_par_orateur": {
+    "S1": 3
+  },
+  "phrases_par_source": {
+    "main": 3
+  },
+  "phrases_ecartees_doublons": 0,
+  "delai_affichage_par_mot_s": {
+    "fr": {
+      "n": 17,
+      "moyenne": 14.233,
+      "mediane": 14.962,
+      "p90": 20.042,
+      "max": 21.262
+    },
+    "en": {
+      "n": 15,
+      "moyenne": 13.647,
+      "mediane": 13.412,
+      "p90": 16.412,
+      "max": 16.532
+    }
+  },
+  "unites_de_sens": {
+    "validees": 0,
+    "rejetees": 0,
+    "latence_s": null
+  },
+  "voix_non_lues_paroles_simultanees": 0,
+  "langues_traduites": {
+    "fr": "français",
+    "en": "anglais"
+  },
+  "temps_calcul_ms": {
+    "asr": {
+      "n": 10,
+      "moyenne": 3305.3,
+      "mediane": 2723.5,
+      "p90": 4255,
+      "max": 6618
+    },
+    "sat": {
+      "n": 11,
+      "moyenne": 12.836,
+      "mediane": 8.7,
+      "p90": 25.2,
+      "max": 34.6
+    },
+    "mt_final": {
+      "n": 3,
+      "moyenne": 312.333,
+      "mediane": 213,
+      "p90": 530,
+      "max": 530
+    },
+    "mt_provisoire": {
+      "n": 8,
+      "moyenne": 314.125,
+      "mediane": 160.0,
+      "p90": 361,
+      "max": 1296
+    }
+  },
+  "latence_coupe_s": {
+    "n": 3,
+    "moyenne": 8.735,
+    "mediane": 9.352,
+    "p90": 9.786,
+    "max": 9.786
+  },
+  "retard_mots_valides_s": {
+    "n": 10,
+    "moyenne": 3.058,
+    "mediane": 2.69,
+    "p90": 4.83,
+    "max": 5.49
+  },
+  "latence_traduction_definitive_s": {
+    "fr": {
+      "n": 2,
+      "moyenne": 8.793,
+      "mediane": 8.793,
+      "p90": 10.322,
+      "max": 10.322
+    },
+    "en": {
+      "n": 1,
+      "moyenne": 10.852,
+      "mediane": 10.852,
+      "p90": 10.852,
+      "max": 10.852
+    }
+  },
+  "changements_de_langue": 0,
+  "changements_de_reglages_pendant_le_test": 2,
+  "erreurs": []
+}

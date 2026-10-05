@@ -1,0 +1,4 @@
+# Outils de test (non nécessaires pour utiliser le projet)
+-r requirements.txt
+pytest>=8
+httpx            # pour le test du protocole WebSocket (tests/test_protocol.py)

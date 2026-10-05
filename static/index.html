@@ -1,0 +1,1252 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sous-titrage et traduction en direct</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #EDF0F5;
+    --sheet: #F8F9FB;
+    --ink: #172033;
+    --muted: #6F7A8E;
+    --rule: #CBD2DE;
+    --cobalt: #2A4FE0;
+    --cobalt-soft: #DCE3FB;
+    --amber: #B87C0C;
+    --amber-soft: #F3E3C0;
+    --band: #000;
+    --band-text: #FFF;
+    --band-dim: #A9B1C0;
+    --radius-s: 4px;
+    --radius-m: 8px;
+    font-family: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 16px;
+    color: var(--ink);
+    background: var(--paper);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; line-height: 1.45; }
+  button, select, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--cobalt); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+
+  /* Barres de contrôle */
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px;
+         padding: 14px 24px; background: var(--sheet); border-bottom: 1px solid var(--rule); }
+  .bar h1 { font-size: 1.15rem; margin: 0 auto 0 0; font-weight: 700; letter-spacing: -0.01em; }
+  .langbar { background: #E4E8EF; }
+  .group { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .group > span { color: var(--muted); font-size: .92rem; }
+  .seg-ctl { display: inline-flex; border: 1px solid var(--rule); border-radius: var(--radius-m);
+             overflow: hidden; background: var(--sheet); }
+  .seg-ctl label { padding: 6px 12px; cursor: pointer; border-left: 1px solid var(--rule); }
+  .seg-ctl label:first-child { border-left: 0; }
+  .seg-ctl input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg-ctl label:has(input:checked) { background: var(--cobalt-soft); color: var(--cobalt); font-weight: 700; }
+  .seg-ctl label:has(input:focus-visible) { outline: 3px solid var(--cobalt); outline-offset: -3px; }
+  select { padding: 6px 8px; border: 1px solid var(--rule); border-radius: var(--radius-s); background: #fff; }
+  .heard { font-size: .95rem; }
+  .heard b { color: var(--cobalt); }
+  #fileInput { max-width: 240px; }
+  #roomName { width: 130px; padding: 6px 8px; border: 1px solid var(--rule); border-radius: var(--radius-s); background: #fff; }
+  .room-links { display: inline-flex; gap: 10px; font-size: .9rem; }
+  .room-links a { color: var(--cobalt); }
+  #runLabel { width: 190px; padding: 6px 8px; border: 1px solid var(--rule); border-radius: var(--radius-s); background: #fff; }
+  .run-info { margin-top: 10px; font-size: .88rem; color: var(--muted); overflow-wrap: anywhere; }
+  .run-info b { color: var(--ink); }
+  .btn { border: 0; border-radius: var(--radius-m); padding: 9px 18px; cursor: pointer; font-weight: 700;
+         background: var(--cobalt); color: #fff; }
+  .btn[disabled] { opacity: .45; cursor: not-allowed; }
+  .btn.stop { background: var(--ink); }
+  .state { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--rule); flex: none; }
+  .state.live .dot { background: #D23A3A; box-shadow: 0 0 0 4px rgba(210,58,58,.18); }
+  .state.ready .dot { background: #2E9B57; }
+  .state.error .dot { background: #D23A3A; }
+
+  main { max-width: 1240px; margin: 0 auto; padding: 24px; display: grid; gap: 24px;
+         grid-template-columns: minmax(0, 1fr) 320px; }
+  section, aside { min-width: 0; }
+  h2 { font-size: 1rem; margin: 0 0 10px; font-weight: 700; }
+  .hint { color: var(--muted); font-size: .9rem; margin: 0 0 12px; }
+  .empty { color: var(--muted); }
+
+  /* Transcription */
+  .transcript { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--radius-m);
+                padding: 16px 18px; min-height: 140px; max-height: 240px; overflow-y: auto; font-size: 1.05rem; }
+  .transcript .pending { color: var(--muted); font-style: italic; }
+  .lang-mark { display: inline-block; margin: 0 6px; padding: 0 8px; border-radius: var(--radius-s);
+               background: var(--cobalt-soft); color: var(--cobalt); font-size: .82rem; font-weight: 700; }
+  .player { margin-top: 12px; }
+  .player audio { width: 100%; }
+  .stats { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 1px; margin-top: 16px;
+           background: var(--rule); border: 1px solid var(--rule); border-radius: var(--radius-m); overflow: hidden; }
+  .stat { background: var(--sheet); padding: 10px 12px; }
+  .stat b { display: block; font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--muted); font-size: .82rem; }
+
+  /* Panneau de droite */
+  .panel { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--radius-m);
+           padding: 16px 18px; margin-bottom: 16px; }
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label { display: flex; justify-content: space-between; gap: 8px; font-size: .92rem; }
+  .field output { font-variant-numeric: tabular-nums; font-weight: 700; }
+  .field input[type=range] { width: 100%; accent-color: var(--cobalt); }
+  .field.low input[type=range] { accent-color: var(--amber); }
+  .field select { width: 100%; }
+  .field small { color: var(--muted); display: block; font-size: .82rem; }
+  .check { display: flex; gap: 8px; align-items: flex-start; font-size: .92rem; }
+  .check input { margin-top: 4px; accent-color: var(--cobalt); }
+  details summary { cursor: pointer; font-weight: 700; }
+  details[open] summary { margin-bottom: 12px; }
+
+  /* Ruban SaT */
+  .wide { grid-column: 1 / -1; }
+  .ribbon { position: relative; display: flex; align-items: flex-end; gap: 2px; overflow-x: auto;
+            background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--radius-m);
+            padding: 18px 16px 10px; min-height: 176px; }
+  .ribbon .empty { align-self: center; }
+  .col { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; min-width: 46px; padding: 0 4px; }
+  .meter { position: relative; width: 22px; height: 96px; background: #E3E7EE; border-radius: 3px 3px 0 0; }
+  .meter i { position: absolute; left: 0; right: 0; bottom: 0; background: #AEB6C4; border-radius: 3px 3px 0 0; }
+  .col.low .meter i { background: var(--amber); }
+  .col.high .meter i { background: var(--cobalt); }
+  .col .w { margin-top: 6px; font-size: .95rem; white-space: nowrap; }
+  .col.high .w { color: var(--cobalt); font-weight: 700; }
+  .col .p { font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .col.ctx .meter { background: transparent; border: 1px dashed var(--rule); }
+  .col.ctx .w { color: var(--muted); font-style: italic; }
+  .th-line { position: absolute; left: 0; height: 0; pointer-events: none; }
+  .th-line.high { border-top: 2px solid var(--cobalt); }
+  .th-line.low { border-top: 2px dashed var(--amber); }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 8px; color: var(--muted); font-size: .88rem; }
+  .legend span::before { content: ""; display: inline-block; width: 18px; margin-right: 6px; vertical-align: middle; }
+  .legend .lh::before { border-top: 2px solid var(--cobalt); }
+  .legend .ll::before { border-top: 2px dashed var(--amber); }
+
+  /* Micros et orateurs */
+  .spk { display: inline-block; padding: 0 8px; margin-right: 6px; border: 1px solid var(--c, var(--muted));
+         border-radius: var(--radius-s); color: var(--c, var(--muted)); font-size: .82rem; font-weight: 700;
+         background: var(--sheet); cursor: pointer; }
+  .src-row { border: 1px solid var(--rule); border-radius: var(--radius-m); padding: 10px; margin-bottom: 10px;
+             display: grid; gap: 6px; background: #fff; }
+  .src-row input[type=text], .src-row select { width: 100%; padding: 5px 8px; border: 1px solid var(--rule);
+             border-radius: var(--radius-s); background: #fff; }
+  .src-row .line { display: flex; gap: 6px; align-items: center; }
+  .meter-bar { flex: 1; height: 6px; background: #E3E7EE; border-radius: 3px; overflow: hidden; }
+  .meter-bar i { display: block; height: 100%; width: 0; background: var(--cobalt); transition: width .1s; }
+  .row-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  #ribbonWho { font-weight: 400; color: var(--muted); margin-left: 8px; }
+
+  /* Campagne de tests */
+  .camp-list { margin: 10px 0 0; padding: 0; list-style: none; max-height: 260px; overflow-y: auto; }
+  .camp-list li { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 6px 0;
+                  border-top: 1px solid var(--rule); font-size: .88rem; }
+  .camp-list li:first-child { border-top: 0; }
+  .camp-list .name { overflow-wrap: anywhere; }
+  .camp-list .state { color: var(--muted); text-align: right; }
+  .camp-list .state.ok { color: #1F8A5B; font-weight: 700; }
+  .camp-list .state.err { color: #D23A3A; }
+  .camp-list .state.run { color: var(--cobalt); font-weight: 700; }
+
+  /* Texte complet */
+  .full-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .full-card { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--radius-m);
+               display: flex; flex-direction: column; min-width: 0; }
+  .full-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+  .full-head b { margin-right: auto; }
+  .full-head .count { color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; }
+  .mini-btn { border: 1px solid var(--rule); background: #fff; border-radius: var(--radius-s);
+              padding: 3px 10px; font-size: .85rem; cursor: pointer; }
+  .mini-btn:hover { border-color: var(--cobalt); color: var(--cobalt); }
+  .full-text { padding: 12px 14px; max-height: 280px; overflow-y: auto; white-space: pre-wrap;
+               overflow-wrap: anywhere; font-size: 1rem; line-height: 1.55; }
+  .full-card.orig .full-text { color: var(--muted); }
+
+  /* Segments */
+  .segments { border: 1px solid var(--rule); border-radius: var(--radius-m); background: var(--sheet); }
+  .seg { display: grid; grid-template-columns: 44px minmax(0,1fr) minmax(0,1.2fr) 180px; gap: 16px;
+         padding: 12px 16px; border-top: 1px solid var(--rule); }
+  .seg:first-child { border-top: 0; }
+  .seg .id { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .seg.open { background: #F1F4FA; }
+  .seg.open .src, .seg.open .tr { color: var(--muted); font-style: italic; }
+  .seg.open .tr .unit, .cap .t .unit { color: inherit; font-style: normal; }
+  .seg.open .tr .unit { color: var(--ink); }
+  .tr-line { margin-bottom: 4px; }
+  .tr-line:last-child { margin-bottom: 0; }
+  .tr-line .l { color: var(--muted); font-size: .82rem; margin-right: 6px; }
+  .tr-line.wait { color: var(--muted); font-style: italic; }
+  .meta { font-size: .85rem; color: var(--muted); }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: var(--radius-s); font-weight: 700; font-size: .82rem; }
+  .tag.sat { background: var(--cobalt-soft); color: var(--cobalt); }
+  .tag.pause, .tag.satpause { background: var(--amber-soft); color: #7A5206; }
+  .tag.other { background: #E3E7EE; color: var(--ink); }
+
+  /* Bande de sous-titres */
+  .band { position: fixed; left: 0; right: 0; bottom: 0; background: var(--band); color: var(--band-text);
+          padding: 16px 24px 18px; }
+  .band .inner { max-width: 1100px; margin: 0 auto; }
+  .cap { display: grid; grid-template-columns: 84px 1fr; gap: 12px; align-items: baseline; }
+  .cap + .cap { margin-top: 6px; }
+  .cap .l { color: var(--band-dim); font-size: .85rem; }
+  .cap .t { font-size: clamp(1.15rem, 2.3vw, 1.7rem); line-height: 1.3; font-weight: 700; min-height: 1.3em; }
+  .cap .t .prov { color: var(--band-dim); font-weight: 400; }
+  .cap.src .t { font-size: 1rem; font-weight: 400; color: var(--band-dim); }
+  .cap .speaking { color: #9FB4FF; font-size: .82rem; margin-left: 6px; }
+
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    .seg { grid-template-columns: 32px minmax(0,1fr); }
+    .seg .tr, .seg .meta { grid-column: 2; }
+    .stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .cap { grid-template-columns: 1fr; gap: 0; }
+  }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <h1>Sous-titrage et traduction en direct</h1>
+  <label class="room-field">Salle <input type="text" id="roomName" list="roomList" maxlength="30" aria-label="Salle de cette régie"></label>
+  <datalist id="roomList"></datalist>
+  <span class="room-links"><a id="viewerLink" href="/viewer" target="_blank">Écran public</a><a href="/event" target="_blank">Toutes les salles</a></span>
+  <div class="seg-ctl" id="singleSource" role="radiogroup" aria-label="Source audio">
+    <label><input type="radio" name="source" value="mic" checked>Micro</label>
+    <label><input type="radio" name="source" value="file">Fichier audio</label>
+  </div>
+  <input type="file" id="fileInput" accept="audio/*,video/*" hidden aria-label="Choisir un fichier audio">
+  <input type="text" id="runLabel" placeholder="Nom du test (ex. B_seuil05)" aria-label="Nom du test, utilisé pour le dossier d'enregistrement">
+  <button class="btn" id="startBtn" disabled>Démarrer l'écoute</button>
+  <button class="btn stop" id="stopBtn" disabled>Arrêter</button>
+  <span class="state" id="state"><span class="dot"></span><span id="stateText">Connexion au serveur…</span></span>
+</header>
+
+<div class="bar langbar">
+  <div class="group">
+    <span id="lblSpoken">Langue parlée</span>
+    <select id="spoken" aria-labelledby="lblSpoken">
+      <option value="auto">Détection automatique</option>
+      <option value="en">Anglais</option>
+      <option value="de">Allemand</option>
+      <option value="fr">Français</option>
+    </select>
+  </div>
+  <div class="group" role="group" aria-labelledby="lblTargets">
+    <span id="lblTargets">Sous-titres en</span>
+    <div class="seg-ctl" id="targets">
+      <label><input type="checkbox" value="en">Anglais</label>
+      <label><input type="checkbox" value="de">Allemand</label>
+      <label><input type="checkbox" value="fr" checked>Français</label>
+    </div>
+  </div>
+  <div class="group">
+    <span id="lblVoice">Voix traduite</span>
+    <select id="voice" aria-labelledby="lblVoice">
+      <option value="auto">Vers la langue cible</option>
+      <option value="none">Aucune</option>
+      <option value="en">Anglais</option>
+      <option value="de">Allemand</option>
+      <option value="fr">Français</option>
+    </select>
+  </div>
+  <span class="heard" id="heard">Langue entendue : <b>en attente</b></span>
+</div>
+
+<main>
+  <section>
+    <h2>Transcription</h2>
+    <p class="hint">Texte validé en noir, texte encore instable en gris.</p>
+    <div class="transcript" id="transcript" aria-live="polite">
+      <span class="empty" id="transcriptEmpty">Choisis les langues, puis démarre l'écoute. Le texte apparaît ici pendant que tu parles.</span>
+      <span id="committed"></span><span class="pending" id="pending"></span>
+    </div>
+    <div class="player" id="playerBox" hidden>
+      <audio id="player" controls></audio>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="sAsr">–</b><span>Whisper, GPU (ms)</span></div>
+      <div class="stat"><b id="sSat">–</b><span>SaT, CPU (ms)</span></div>
+      <div class="stat"><b id="sMt">–</b><span>Marian, CPU (ms)</span></div>
+      <div class="stat"><b id="sLag">–</b><span>Retard des mots (s)</span></div>
+      <div class="stat"><b id="sVoice">0</b><span>Phrases à prononcer</span></div>
+    </div>
+    <div class="run-info" id="runInfo">Chaque test est enregistré automatiquement dans le dossier <b>runs</b> du projet.</div>
+  </section>
+
+  <aside>
+    <div class="panel" id="campPanel">
+      <h2>Campagne de tests</h2>
+      <p class="hint">Choisis tes enregistrements : ils sont joués l'un après l'autre, puis chaque test est analysé automatiquement (toutes les politiques, toutes les langues cibles).</p>
+      <div class="field"><label for="campFiles">Fichiers audio</label>
+        <input type="file" id="campFiles" accept="audio/*,video/*" multiple></div>
+      <div class="field"><label class="check"><input type="checkbox" id="campAnalyze" checked>
+        <span>Analyse automatique après chaque test</span></label></div>
+      <div class="row-btns">
+        <button class="btn" id="campStart">Lancer la campagne</button>
+        <button class="mini-btn" id="campStop" disabled>Arrêter la campagne</button>
+      </div>
+      <ul class="camp-list" id="campList"></ul>
+      <div class="row-btns">
+        <button class="mini-btn" id="campDownload">Télécharger le journal des tests</button>
+        <button class="mini-btn" id="campCopy">Copier le journal</button>
+      </div>
+      <small class="hint" id="campInfo">Astuce : laisse « Langue parlée » sur Détection automatique si tes enregistrements sont en plusieurs langues.</small>
+    </div>
+
+    <div class="panel" id="micPanel">
+      <h2>Micros</h2>
+      <div class="field"><label for="profile">Configuration</label>
+        <select id="profile">
+          <option value="single">Un micro</option>
+          <option value="panel">Plusieurs micros, un orateur chacun</option>
+        </select></div>
+      <div id="multiBox" hidden>
+        <p class="hint">Chaque micro correspond à un orateur. Pour tester, un micro peut lire un fichier audio : tous les fichiers démarrent ensemble.</p>
+        <div id="srcList"></div>
+        <div class="row-btns">
+          <button class="mini-btn" id="addSrc">Ajouter un micro</button>
+          <button class="mini-btn" id="allowMics">Autoriser et lister les micros</button>
+        </div>
+      </div>
+      <div class="field" style="margin-top:12px"><label for="savedProfiles">Profils enregistrés</label>
+        <div class="line" style="display:flex;gap:6px"><select id="savedProfiles" style="flex:1"></select>
+          <button class="mini-btn" id="loadProfile">Charger</button><button class="mini-btn" id="delProfile">Supprimer</button></div>
+        <div style="display:flex;gap:6px;margin-top:6px"><input type="text" id="profileName" placeholder="Nom du profil" style="flex:1;padding:5px 8px;border:1px solid var(--rule);border-radius:var(--radius-s)">
+          <button class="mini-btn" id="saveProfile">Enregistrer</button></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Audio</h2>
+      <div class="field"><label for="voiceVol">Volume de la voix traduite <output id="o_voiceVol">100 %</output></label>
+        <input type="range" id="voiceVol" min="0" max="1" step="0.05" value="1"></div>
+      <div class="field"><label for="voiceRate">Débit de la voix <output id="o_voiceRate">1,1</output></label>
+        <input type="range" id="voiceRate" min="0.8" max="1.6" step="0.05" value="1.1">
+        <small>Accéléré automatiquement si des phrases s'accumulent.</small></div>
+      <div class="field" id="origField" hidden><label for="origVol">Volume de l'audio original <output id="o_origVol">40 %</output></label>
+        <input type="range" id="origVol" min="0" max="1" step="0.05" value="0.4">
+        <small>Baisse l'original pour mieux entendre la traduction.</small></div>
+      <div class="field"><label class="check"><input type="checkbox" id="duck">
+        <span>Couper le micro pendant la voix traduite<br><small>Évite que la voix soit retranscrite si tu n'as pas de casque.</small></span></label></div>
+    </div>
+
+    <details class="panel">
+      <summary>Réglages de coupe</summary>
+      <div class="field"><label for="th_high">Seuil sûr <output id="o_th_high"></output></label>
+        <input type="range" id="th_high" min="0" max="1" step="0.01"></div>
+      <div class="field low"><label for="th_low">Seuil avec pause <output id="o_th_low"></output></label>
+        <input type="range" id="th_low" min="0" max="1" step="0.01"></div>
+      <div class="field"><label for="pause_s">Pause minimale (s) <output id="o_pause_s"></output></label>
+        <input type="range" id="pause_s" min="0.1" max="2" step="0.05"></div>
+      <div class="field"><label for="long_pause_s">Pause longue seule (s) <output id="o_long_pause_s"></output></label>
+        <input type="range" id="long_pause_s" min="0.5" max="3" step="0.1"></div>
+      <div class="field"><label for="lookahead_words">Mots attendus après la frontière <output id="o_lookahead_words"></output></label>
+        <input type="range" id="lookahead_words" min="0" max="3" step="1"></div>
+      <div class="field"><label for="max_words">Longueur max avant coupe de secours <output id="o_max_words"></output></label>
+        <input type="range" id="max_words" min="10" max="60" step="1"></div>
+      <div class="field"><label class="check"><input type="checkbox" id="muEnabled">
+        <span>Unités de sens<br><small>Traduit les longues phrases par morceaux dont le sens est déjà stable, sans attendre la fin.</small></span></label></div>
+      <div class="field"><label for="muK">Mots d'avance pour le test <output id="o_muK">3</output></label>
+        <input type="range" id="muK" min="2" max="4" step="1" value="3">
+        <small>Plus petit : traduction plus tôt. Plus grand : plus prudent.</small></div>
+      <div class="field"><label for="sat_input">Texte envoyé à SaT</label>
+        <select id="sat_input">
+          <option value="raw">Tel que Whisper l'écrit</option>
+          <option value="nopunct">Sans ponctuation, majuscules gardées</option>
+          <option value="normalized">Minuscules sans ponctuation (ASR brut)</option>
+        </select></div>
+    </details>
+  </aside>
+
+  <section class="wide">
+    <h2>Texte complet</h2>
+    <p class="hint">Toutes les phrases terminées, bout à bout. Pour chaque langue, les phrases déjà dans cette langue sont reprises telles quelles.</p>
+    <div class="full-grid" id="fullGrid"></div>
+  </section>
+
+  <section class="wide">
+    <h2>Probabilités SaT sur la phrase en cours<span id="ribbonWho"></span></h2>
+    <p class="hint">Chaque barre est la probabilité qu'une phrase se termine après le mot. Les mots en pointillés, encore instables, servent à SaT pour voir la suite.</p>
+    <div class="ribbon" id="ribbon"><span class="empty">Les mots en attente de coupe s'afficheront ici.</span></div>
+    <div class="legend"><span class="lh">Seuil sûr</span><span class="ll">Seuil avec pause</span></div>
+  </section>
+
+  <section class="wide">
+    <h2>Phrases et traductions</h2>
+    <div class="segments" id="segments"></div>
+  </section>
+</main>
+
+<div class="band" id="band" aria-live="polite" aria-label="Sous-titres"><div class="inner" id="bandInner"></div></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const LANGS = ["en", "de", "fr"];
+const NAMES = { en: "Anglais", de: "Allemand", fr: "Français" };
+const LOCALES = { en: "en-US", de: "de-DE", fr: "fr-FR" };
+const TARGET_RATE = 16000, CHUNK = 1600; // blocs de 100 ms à 16 kHz
+
+const st = {
+  ws: null, ctx: null, nodes: [], stream: null, player: null, origGain: null,
+  out: new Float32Array(0), running: false,
+  policy: {}, settings: { source: "auto", targets: ["fr"], voice: "auto" },
+  segments: new Map(), provBy: {}, lastFinalBy: {}, unitsBy: {},
+  openBy: {}, pendingBy: {}, lang: null,
+  multi: false, speakers: {}, speakerOrder: [], lastActive: {}, lastAsrSpeaker: null,
+  srcCapture: [], players: [], streams: [], devices: [],
+  voiceQueue: 0, playCtx: null, playUntil: 0, speakingNow: null,
+};
+
+const srcOf = (m) => m.source || "main";
+const allOpenWords = () => Object.values(st.openBy).flat();
+const allPending = () => Object.values(st.pendingBy).filter(Boolean).join(" ");
+
+/* ---------- Orateurs ---------- */
+function setSpeakers(list) {
+  for (const s of list || []) {
+    st.speakers[s.id] = s;
+    if (!st.speakerOrder.includes(s.id)) st.speakerOrder.push(s.id);
+  }
+}
+function speakerChip(id) {
+  const s = st.speakers[id] || { name: id, color: "#6F7A8E" };
+  const c = document.createElement("span"); c.className = "spk"; c.style.setProperty("--c", s.color);
+  c.textContent = s.name; c.title = "Cliquer pour renommer";
+  c.onclick = () => {
+    const name = prompt("Nom de cet orateur :", s.name);
+    if (name && name.trim()) send({ type: "rename_speaker", speaker: id, name: name.trim() });
+  };
+  return c;
+}
+
+/* ---------- WebSocket ---------- */
+/* ---------- Salle de cette régie ---------- */
+function cleanRoom(n) { return (n || "").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30); }
+st.room = cleanRoom(new URLSearchParams(location.search).get("room")) || (() => { try { return localStorage.getItem("regie-room"); } catch (_) { return null; } })() || "salle-1";
+function showRoom() {
+  $("roomName").value = st.room;
+  $("viewerLink").href = `/viewer?room=${encodeURIComponent(st.room)}`;
+  document.title = `Régie · ${st.room}`;
+  history.replaceState(null, "", `?room=${encodeURIComponent(st.room)}`);
+  try { localStorage.setItem("regie-room", st.room); } catch (_) {}
+}
+async function listRooms() {
+  try {
+    const r = await (await fetch("/api/rooms")).json();
+    $("roomList").innerHTML = r.rooms.map(x => `<option value="${x.name}"></option>`).join("");
+  } catch (_) {}
+}
+$("roomName").addEventListener("change", () => {
+  const n = cleanRoom($("roomName").value);
+  if (!n || n === st.room) { $("roomName").value = st.room; return; }
+  if (st.running) { setState("error", "Arrête d'abord la session en cours avant de changer de salle."); $("roomName").value = st.room; return; }
+  st.room = n; showRoom(); connect();
+});
+showRoom(); listRooms();
+
+function connect() {
+  if (st.ws) { st.ws.onclose = null; st.ws.close(); }
+  const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws?room=${encodeURIComponent(st.room)}&role=producer`);
+  ws.onclose = () => { if (st.roomRefused) return; setState("error", "Serveur déconnecté. Relance le serveur puis recharge la page."); stopCapture(false); $("startBtn").disabled = true; };
+  ws.onmessage = (ev) => handle(JSON.parse(ev.data));
+  st.ws = ws;
+}
+const send = (obj) => { if (st.ws && st.ws.readyState === 1) st.ws.send(JSON.stringify(obj)); };
+
+function handle(m) {
+  switch (m.type) {
+    case "hello":
+      st.roomRefused = false;
+      if (m.room) { st.room = m.room; showRoom(); }
+      applyPolicy(m.policy); applySettings(m.settings);
+      if (!m.info.ready) { waitForModels(); break; }
+      if (m.info.whisper.gpu_error) setState("error", `Whisper tourne sur le CPU (lent) : GPU indisponible. ${m.info.whisper.gpu_error}. Voir le README, section Windows.`);
+      else setState("ready", `Prêt · salle ${m.room || st.room} : Whisper ${m.info.whisper.model} sur ${m.info.whisper.device}, SaT et Marian sur CPU`
+        + (m.event ? ` · ${m.event.active}/${m.event.max_sessions} sessions en cours` : ""));
+      $("startBtn").disabled = false; break;
+    case "status":
+      if (m.speakers) setSpeakers(m.speakers);
+      if (m.profile) st.multi = m.profile !== "single";
+      if (m.state === "loading") setState(st.running ? "live" : "ready", m.text);
+      if (m.state === "warning") setState("error", m.text);
+      if (m.state === "models" && st.running) setState("live", liveText());
+      if (m.policy) applyPolicy(m.policy);
+      break;
+    case "policy": applyPolicy(m.policy); break;
+    case "speakers": setSpeakers(m.speakers); renderSegments(); renderBand(); renderFull(); break;
+    case "unit": onUnit(m); break;
+    case "settings": applySettings(m.settings); break;
+    case "lang": onLang(m); break;
+    case "asr": onAsr(m); break;
+    case "sat": onSat(m); break;
+    case "segment": onSegment(m); break;
+    case "translation": onTranslation(m); break;
+    case "speak": onSpeak(m); break;
+    case "error":
+      if (m.where === "room") {                 // une autre régie pilote déjà cette salle
+        st.roomRefused = true; $("startBtn").disabled = true; setState("error", m.message); break;
+      }
+      if (m.where === "capacity") {             // toutes les places sont prises : on n'écoute pas
+        stopCapture(false); $("startBtn").disabled = false; $("stopBtn").disabled = true;
+        if (st.campaign) { campaignState("Refusé : capacité atteinte", "err"); st.campaign = null; $("campStart").disabled = false; $("campStop").disabled = true; }
+        setState("error", m.message); listRooms(); break;
+      }
+      if (m.fatal) {                            // la session de CETTE salle est en erreur : on peut relancer
+        stopCapture(false); $("startBtn").disabled = false; $("stopBtn").disabled = true;
+      }
+      setState("error", m.message); break;
+    case "run_started":
+      $("runInfo").innerHTML = `Enregistrement en cours dans : <b></b>`;
+      $("runInfo").querySelector("b").textContent = m.path; break;
+    case "analysis_started": campaignState("Analyse…", "run"); break;
+    case "analysis_progress": campaignState(`Analyse ${m.done}/${m.total}`, "run"); break;
+    case "analysis_done": onAnalysisDone(m); break;
+    case "run_saved":
+      onCampaignRunSaved(m);
+      $("runInfo").innerHTML = (m.complete
+        ? `Test enregistré (phrases, traductions, latences, résumé) dans : <b></b>`
+        : `Test interrompu, enregistré tel quel dans : <b></b>`) +
+        (m.analysis ? "<br>Analyse automatique en cours ; le test sera ajouté au journal ensuite."
+                    : (m.journal ? "<br>Ajouté au journal unique : runs/journal_des_tests.jsonl" : ""));
+      $("runInfo").querySelector("b").textContent = m.path; break;
+    case "done": setState("ready", "Flux terminé, tout est traduit"); break;
+  }
+}
+
+/* ---------- Attente du chargement des modèles ---------- */
+async function waitForModels() {
+  $("startBtn").disabled = true;
+  while (true) {
+    let info;
+    try { info = await (await fetch("/api/info")).json(); } catch (_) { info = null; }
+    if (info && info.error) { setState("error", `Échec du chargement : ${info.error}`); return; }
+    if (info && info.ready) {
+      if (info.whisper.gpu_error) setState("error", `Whisper tourne sur le CPU (lent) : GPU indisponible. ${info.whisper.gpu_error}. Voir le README, section Windows.`);
+      else setState("ready", `Prêt : Whisper ${info.whisper.model} sur ${info.whisper.device}, SaT et Marian sur CPU`);
+      $("startBtn").disabled = false;
+      return;
+    }
+    setState("", info ? `${info.status} Le premier lancement peut prendre plusieurs minutes.` : "Serveur injoignable…");
+    await new Promise(r => setTimeout(r, 2000));
+  }
+}
+
+/* ---------- Pipeline ---------- */
+function onLang(m) {
+  st.lang = m.lang;
+  $("heard").innerHTML = `Langue entendue : <b>${NAMES[m.lang]}</b>` + (m.mode === "auto" ? ` (${Math.round(m.prob * 100)} %)` : "");
+  const mark = document.createElement("span"); mark.className = "lang-mark"; mark.textContent = NAMES[m.lang];
+  $("committed").appendChild(mark);
+  $("transcriptEmpty").hidden = true;
+}
+
+function onAsr(m) {
+  if (m.committed.length) {
+    $("transcriptEmpty").hidden = true;
+    if (st.multi && m.speaker !== st.lastAsrSpeaker) {
+      $("committed").appendChild(document.createTextNode(" "));
+      $("committed").appendChild(speakerChip(m.speaker));
+      st.lastAsrSpeaker = m.speaker;
+    }
+    $("committed").appendChild(document.createTextNode(m.committed.join("")));
+    st.lastActive[m.speaker] = Date.now();
+  }
+  st.pendingBy[srcOf(m)] = m.pending || "";
+  $("pending").textContent = allPending();
+  if (m.ms) $("sAsr").textContent = m.ms;
+  $("sLag").textContent = Math.max(0, m.received_s - m.committed_until).toFixed(1);
+  const t = $("transcript"); t.scrollTop = t.scrollHeight;
+  renderBand();
+}
+
+function onSat(m) {
+  st.openBy[srcOf(m)] = m.words;
+  if (m.words.length) st.lastActive[m.speaker] = Date.now();
+  $("ribbonWho").textContent = st.multi && st.speakers[m.speaker] ? `· ${st.speakers[m.speaker].name}` : "";
+  if (m.ms) $("sSat").textContent = m.ms.toFixed(1);
+  if (m.policy) st.policy = m.policy;
+  renderRibbon(m.words, m.probs, m.context || []);
+  renderSegments(); renderBand();
+}
+
+function onUnit(m) {
+  // Unité de sens validée : affichée en définitif avant la fin de la phrase
+  const src = srcOf(m);
+  let u = st.unitsBy[src];
+  if (!u || u.key !== m.key) u = st.unitsBy[src] = { key: m.key, byLang: {} };
+  (u.byLang[m.lang] = u.byLang[m.lang] || []).push(m.text);
+  renderSegments(); renderBand();
+}
+function unitsText(src, lang) {
+  const u = st.unitsBy[src];
+  return u && u.byLang[lang] ? u.byLang[lang].join(" ") : "";
+}
+
+function onSegment(m) {
+  if (m.open_key && st.unitsBy[srcOf(m)] && st.unitsBy[srcOf(m)].key === m.open_key) delete st.unitsBy[srcOf(m)];
+  st.segments.set(m.id, { ...m, tr: {} });
+  const p = st.provBy[srcOf(m)];
+  if (p && p.id <= m.id) delete st.provBy[srcOf(m)];
+  st.lastActive[m.speaker] = Date.now();
+  renderSegments(); renderFull();
+}
+
+function onTranslation(m) {
+  $("sMt").textContent = m.ms;
+  const src = srcOf(m);
+  if (m.final) {
+    const s = st.segments.get(m.id);
+    if (s) s.tr[m.lang] = m;
+    st.lastFinalBy[src] = Math.max(st.lastFinalBy[src] || 0, m.id);
+    const p = st.provBy[src];
+    if (p && p.id <= m.id) delete st.provBy[src];
+  } else if (m.id > (st.lastFinalBy[src] || 0)) {
+    let p = st.provBy[src];
+    if (!p || p.id !== m.id) p = st.provBy[src] = { id: m.id, byLang: {}, speaker: m.speaker };
+    p.byLang[m.lang] = m;
+  }
+  renderSegments(); renderBand();
+  if (m.final) renderFull();
+}
+
+/* ---------- Voix traduite ---------- */
+function onSpeak(m) {
+  if (m.engine === "piper") return playWav(m);
+  if (!("speechSynthesis" in window)) { setState("error", "Ce navigateur ne sait pas lire la voix. Utilise Chrome ou Edge."); return; }
+  const u = new SpeechSynthesisUtterance(m.text);
+  u.lang = LOCALES[m.lang];
+  const idx = Math.max(0, st.speakerOrder.indexOf(m.speaker));
+  const voice = pickVoice(m.lang, idx); if (voice) u.voice = voice;
+  if (st.multi) u.pitch = [1, 0.85, 1.15, 0.95, 1.1, 0.9][idx % 6];   // voix distinctes par orateur
+  const backlog = speechSynthesis.pending ? st.voiceQueue : 0;
+  u.rate = Number($("voiceRate").value) * (backlog >= 2 ? 1.2 : 1);
+  u.volume = Number($("voiceVol").value);
+  u.onstart = () => { st.speakingNow = m.lang; renderBand(); };
+  u.onend = u.onerror = () => { st.voiceQueue = Math.max(0, st.voiceQueue - 1); $("sVoice").textContent = st.voiceQueue; st.speakingNow = null; renderBand(); };
+  st.voiceQueue += 1; $("sVoice").textContent = st.voiceQueue;
+  speechSynthesis.speak(u);
+}
+
+let voices = [];
+function loadVoices() { voices = speechSynthesis.getVoices(); }
+if ("speechSynthesis" in window) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+function pickVoice(lang, idx = 0) {
+  const list = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith(lang));
+  if (!list.length) return null;
+  const good = list.filter(v => /natural|online|google|neural/i.test(v.name));
+  const pool = good.length ? good : list;
+  return pool[idx % pool.length];
+}
+
+async function playWav(m) {
+  if (!st.playCtx) st.playCtx = new AudioContext();
+  const bytes = Uint8Array.from(atob(m.audio), c => c.charCodeAt(0));
+  const buf = await st.playCtx.decodeAudioData(bytes.buffer);
+  const src = st.playCtx.createBufferSource(); src.buffer = buf;
+  src.playbackRate.value = Math.max(1, Number($("voiceRate").value) * (st.voiceQueue >= 2 ? 1.15 : 1) / 1.1);
+  const gain = st.playCtx.createGain(); gain.gain.value = Number($("voiceVol").value);
+  src.connect(gain).connect(st.playCtx.destination);
+  const at = Math.max(st.playCtx.currentTime + 0.05, st.playUntil);
+  src.start(at);
+  st.playUntil = at + buf.duration / src.playbackRate.value;
+  st.voiceQueue += 1; $("sVoice").textContent = st.voiceQueue;
+  src.onended = () => { st.voiceQueue = Math.max(0, st.voiceQueue - 1); $("sVoice").textContent = st.voiceQueue; };
+}
+
+function isSpeaking() {
+  if ("speechSynthesis" in window && speechSynthesis.speaking) return true;
+  return !!st.playCtx && st.playCtx.currentTime < st.playUntil;
+}
+
+/* ---------- Rendu ---------- */
+function renderRibbon(words, probs, context = []) {
+  const r = $("ribbon"); r.innerHTML = "";
+  if (!words.length) { r.innerHTML = '<span class="empty">Phrase coupée, en attente des mots suivants.</span>'; return; }
+  const hi = st.policy.th_high ?? 0.5, lo = st.policy.th_low ?? 0.25;
+  words.forEach((w, i) => {
+    const p = probs[i] ?? 0;
+    const col = document.createElement("div");
+    col.className = "col" + (p >= hi ? " high" : p >= lo ? " low" : "");
+    col.innerHTML = `<div class="meter"><i style="height:${(p * 100).toFixed(1)}%"></i></div><div class="w"></div><div class="p">${p.toFixed(2)}</div>`;
+    col.querySelector(".w").textContent = w;
+    r.appendChild(col);
+  });
+  // Mots pas encore validés par Whisper : contexte vu par SaT, sans probabilité
+  context.forEach(w => {
+    const col = document.createElement("div"); col.className = "col ctx";
+    col.title = "Mot encore instable : SaT s'en sert pour voir la suite";
+    col.innerHTML = '<div class="meter"></div><div class="w"></div><div class="p">à venir</div>';
+    col.querySelector(".w").textContent = w;
+    r.appendChild(col);
+  });
+  const top = r.querySelector(".meter").offsetTop;
+  for (const [cls, v] of [["high", hi], ["low", lo]]) {
+    const line = document.createElement("div");
+    line.className = "th-line " + cls;
+    line.style.top = `${top + 96 * (1 - v)}px`;
+    line.style.width = `${r.scrollWidth}px`;
+    r.appendChild(line);
+  }
+  r.scrollLeft = r.scrollWidth;
+}
+
+const REASONS = { sat: ["SaT", "sat"], "sat+pause": ["SaT + pause", "satpause"], pause: ["Pause longue", "pause"],
+  max_words: ["Secours (longueur)", "other"], flush: ["Fin du flux", "other"], lang: ["Changement de langue", "other"] };
+
+function trLine(lang, text, cls) {
+  const d = document.createElement("div"); d.className = "tr-line" + (cls ? " " + cls : "");
+  const l = document.createElement("span"); l.className = "l"; l.textContent = NAMES[lang];
+  d.append(l, document.createTextNode(text)); return d;
+}
+
+function renderSegments() {
+  const box = $("segments"); box.innerHTML = "";
+  const openSources = new Set([...Object.keys(st.openBy).filter(k => st.openBy[k].length), ...Object.keys(st.provBy), ...Object.keys(st.unitsBy)]);
+  for (const src of openSources) {
+    const prov = st.provBy[src], words = st.openBy[src] || [];
+    const row = document.createElement("div"); row.className = "seg open";
+    row.innerHTML = `<span class="id">…</span><span class="src"></span><span class="tr"></span><span class="meta">Phrase en cours</span>`;
+    row.querySelector(".src").textContent = words.join(" ");
+    if (st.multi && prov && prov.speaker) row.querySelector(".meta").prepend(speakerChip(prov.speaker));
+    const langs = new Set([...Object.keys(prov ? prov.byLang : {}), ...Object.keys((st.unitsBy[src] || {}).byLang || {})]);
+    for (const lang of langs) {
+      const t = prov && prov.byLang[lang], units = unitsText(src, lang);
+      if (!units) { row.querySelector(".tr").appendChild(trLine(lang, t.text + (t.hidden ? " …" : ""))); continue; }
+      const line = trLine(lang, "");
+      const us = document.createElement("span"); us.className = "unit"; us.textContent = units + " ";
+      line.appendChild(us);
+      if (t && t.after_units) line.appendChild(document.createTextNode(t.text + (t.hidden ? " …" : "")));
+      row.querySelector(".tr").appendChild(line);
+    }
+    box.appendChild(row);
+  }
+  for (const s of [...st.segments.values()].sort((a, b) => b.id - a.id)) {
+    const [label, cls] = REASONS[s.reason] || [s.reason, "other"];
+    const row = document.createElement("div"); row.className = "seg";
+    row.innerHTML = `<span class="id">${s.id}</span><span class="src"></span><span class="tr"></span>
+      <span class="meta"><span class="tag ${cls}">${label}</span> p = ${s.p.toFixed(2)}<br>${NAMES[s.lang]}</span>`;
+    row.querySelector(".src").textContent = s.text;
+    if (st.multi && s.speaker) row.querySelector(".meta").prepend(speakerChip(s.speaker));
+    const tr = row.querySelector(".tr");
+    const langs = Object.keys(s.tr);
+    const expected = st.settings.targets.filter(t => t !== s.lang);
+    if (!expected.length && !langs.length) tr.appendChild(trLine(s.lang, "Déjà dans la langue des sous-titres", "wait"));
+    else if (!langs.length) tr.appendChild(trLine(expected[0], "Traduction en cours…", "wait"));
+    for (const lang of langs) {
+      const t = s.tr[lang];
+      tr.appendChild(trLine(lang, t.text + (t.pivot ? " (via l'anglais)" : "")));
+    }
+    box.appendChild(row);
+  }
+  if (!box.children.length) box.innerHTML = '<div class="seg"><span></span><span class="empty">Aucune phrase pour l\'instant.</span></div>';
+}
+
+function fullTexts() {
+  const segs = [...st.segments.values()].sort((a, b) => a.id - b.id);
+  // Plusieurs orateurs : une ligne par phrase, précédée du nom de l'orateur
+  const who = (s) => st.multi ? `${(st.speakers[s.speaker] || { name: s.speaker }).name} : ` : "";
+  const join = (parts) => parts.filter(p => p[1]).map(([s, t]) => who(s) + t).join(st.multi ? "\n" : " ");
+  const cards = st.settings.targets.map(lang => ({
+    key: lang, title: `Traduction en ${NAMES[lang].toLowerCase()}`, orig: false,
+    text: join(segs.map(s => [s, s.lang === lang ? s.text : (s.tr[lang] ? s.tr[lang].text : "")])),
+  }));
+  cards.push({ key: "orig", title: st.multi ? "Texte original, tous les orateurs" : "Texte original",
+               orig: true, text: join(segs.map(s => [s, s.text])) });
+  return cards;
+}
+
+function renderFull() {
+  const grid = $("fullGrid"); grid.innerHTML = "";
+  for (const c of fullTexts()) {
+    const card = document.createElement("div"); card.className = "full-card" + (c.orig ? " orig" : "");
+    const words = c.text ? c.text.split(/\s+/).length : 0;
+    card.innerHTML = `<div class="full-head"><b></b><span class="count">${words} mots</span>
+      <button class="mini-btn" data-act="copy">Copier</button>
+      <button class="mini-btn" data-act="save">Télécharger (.txt)</button></div><div class="full-text"></div>`;
+    card.querySelector("b").textContent = c.title;
+    const box = card.querySelector(".full-text");
+    box.textContent = c.text || "Le texte apparaîtra ici au fil des phrases terminées.";
+    if (!c.text) box.classList.add("empty");
+    card.querySelector('[data-act="copy"]').onclick = async (e) => {
+      try { await navigator.clipboard.writeText(c.text); e.target.textContent = "Copié"; }
+      catch (_) { e.target.textContent = "Échec"; }
+      setTimeout(() => { e.target.textContent = "Copier"; }, 1500);
+    };
+    card.querySelector('[data-act="save"]').onclick = () => {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([c.text], { type: "text/plain;charset=utf-8" }));
+      a.download = `${c.key === "orig" ? "original" : "traduction-" + c.key}.txt`;
+      a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    };
+    grid.appendChild(card);
+    box.scrollTop = box.scrollHeight;
+  }
+}
+
+function renderBandMulti(inner, finals) {
+  // Une ligne par orateur actif (20 dernières secondes), dans l'ordre d'apparition
+  const now = Date.now();
+  const active = st.speakerOrder.filter(id => now - (st.lastActive[id] || 0) < 20000);
+  for (const id of active) {
+    const mine = finals.filter(s => s.speaker === id);
+    const last = mine[mine.length - 1];
+    const lang = st.settings.targets.find(t => !last || t !== last.lang) || st.settings.targets[0];
+    const prov = Object.values(st.provBy).find(p => p.speaker === id);
+    const row = document.createElement("div"); row.className = "cap";
+    const l = document.createElement("span"); l.className = "l"; l.appendChild(speakerChip(id));
+    const t = document.createElement("div"); t.className = "t";
+    if (last) t.appendChild(document.createTextNode(((last.tr[lang] || {}).text || (last.lang === lang ? last.text : "")) + " "));
+    const pv = prov && prov.byLang[lang];
+    const srcId = Object.keys(st.unitsBy).find(k => (st.speakers[id] || {}).source === k);
+    const units = srcId ? unitsText(srcId, lang) : "";
+    if (units) { const u = document.createElement("span"); u.className = "unit"; u.textContent = units + " "; t.appendChild(u); }
+    if (pv && (!units || pv.after_units)) { const p = document.createElement("span"); p.className = "prov"; p.textContent = pv.text + (pv.hidden ? " …" : ""); t.appendChild(p); }
+    row.append(l, t); inner.appendChild(row);
+  }
+}
+
+function renderBand() {
+  const inner = $("bandInner"); inner.innerHTML = "";
+  const finals = [...st.segments.values()].sort((a, b) => a.id - b.id);
+  if (st.multi) {
+    renderBandMulti(inner, finals);
+    document.body.style.paddingBottom = $("band").offsetHeight + 24 + "px";
+    return;
+  }
+  const prov1 = Object.values(st.provBy)[0];
+  const src1 = Object.keys(st.unitsBy)[0];
+  for (const lang of st.settings.targets) {
+    const last = [...finals].reverse().find(s => s.tr[lang]);
+    const prov = prov1 && prov1.byLang[lang];
+    const units = src1 ? unitsText(src1, lang) : "";
+    const row = document.createElement("div"); row.className = "cap";
+    const l = document.createElement("span"); l.className = "l"; l.textContent = NAMES[lang];
+    if (st.speakingNow === lang) { const sp = document.createElement("span"); sp.className = "speaking"; sp.textContent = "voix"; l.appendChild(sp); }
+    const t = document.createElement("div"); t.className = "t";
+    if (last) t.appendChild(document.createTextNode(last.tr[lang].text + " "));
+    if (units) { const u = document.createElement("span"); u.className = "unit"; u.textContent = units + " "; t.appendChild(u); }
+    if (prov && (!units || prov.after_units)) { const p = document.createElement("span"); p.className = "prov"; p.textContent = prov.text + (prov.hidden ? " …" : ""); t.appendChild(p); }
+    row.append(l, t); inner.appendChild(row);
+  }
+  const src = document.createElement("div"); src.className = "cap src";
+  const l = document.createElement("span"); l.className = "l"; l.textContent = st.lang ? `${NAMES[st.lang]}, original` : "Original";
+  const t = document.createElement("div"); t.className = "t"; t.textContent = (allOpenWords().join(" ") + " " + allPending()).trim();
+  src.append(l, t); inner.appendChild(src);
+  document.body.style.paddingBottom = $("band").offsetHeight + 24 + "px";
+}
+
+/* ---------- Réglages ---------- */
+const FIELDS = ["th_high", "th_low", "pause_s", "long_pause_s", "lookahead_words", "max_words"];
+function applyPolicy(p) {
+  if (!p) return; st.policy = p;
+  for (const f of FIELDS) if (p[f] !== undefined) { $(f).value = p[f]; $("o_" + f).textContent = p[f]; }
+  if (p.sat_input) $("sat_input").value = p.sat_input;
+}
+let policyTimer;
+function pushPolicy() {
+  clearTimeout(policyTimer);
+  policyTimer = setTimeout(() => {
+    const values = { sat_input: $("sat_input").value };
+    for (const f of FIELDS) values[f] = Number($(f).value);
+    send({ type: "policy", values });
+  }, 150);
+}
+for (const f of FIELDS) $(f).addEventListener("input", () => { $("o_" + f).textContent = $(f).value; pushPolicy(); });
+$("sat_input").addEventListener("change", pushPolicy);
+
+function readSettings() {
+  return {
+    source: $("spoken").value,
+    targets: [...document.querySelectorAll("#targets input:checked")].map(i => i.value),
+    voice: $("voice").value,
+    mu_enabled: $("muEnabled").checked,
+    mu_k: Number($("muK").value),
+  };
+}
+function applySettings(s) {
+  if (!s) return; st.settings = s;
+  $("spoken").value = s.source; $("voice").value = s.voice;
+  if (s.mu_enabled !== undefined) $("muEnabled").checked = !!s.mu_enabled;
+  if (s.mu_k) { $("muK").value = s.mu_k; $("o_muK").textContent = s.mu_k; }
+  document.querySelectorAll("#targets input").forEach(i => { i.checked = s.targets.includes(i.value); });
+  renderBand(); renderFull();
+}
+function onSettingsChange() {
+  const s = readSettings();
+  if (!s.targets.length) { setState("error", "Coche au moins une langue de sous-titres."); return; }
+  st.settings = s; renderBand(); renderFull();
+  send({ type: "settings", values: s });
+}
+$("spoken").addEventListener("change", onSettingsChange);
+$("muEnabled").addEventListener("change", onSettingsChange);
+$("muK").addEventListener("input", () => { $("o_muK").textContent = $("muK").value; onSettingsChange(); });
+$("voice").addEventListener("change", onSettingsChange);
+document.querySelectorAll("#targets input").forEach(i => i.addEventListener("change", onSettingsChange));
+
+$("voiceVol").addEventListener("input", () => { $("o_voiceVol").textContent = Math.round($("voiceVol").value * 100) + " %"; });
+$("voiceRate").addEventListener("input", () => { $("o_voiceRate").textContent = Number($("voiceRate").value).toFixed(2).replace(".", ","); });
+$("origVol").addEventListener("input", () => {
+  $("o_origVol").textContent = Math.round($("origVol").value * 100) + " %";
+  if (st.origGain) st.origGain.gain.value = Number($("origVol").value);
+});
+
+/* ---------- Capture audio (en parallèle de la lecture) ---------- */
+const WORKLET = `class Tap extends AudioWorkletProcessor {
+  process(inputs) { const ch = inputs[0] && inputs[0][0]; if (ch) this.port.postMessage(ch.slice(0)); return true; }
+} registerProcessor("pcm-tap", Tap);`;
+
+function downsample(buf, inRate) {
+  if (inRate === TARGET_RATE) return buf;
+  const ratio = inRate / TARGET_RATE, outLen = Math.floor(buf.length / ratio), out = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const a = Math.floor(i * ratio), b = Math.min(buf.length, Math.floor((i + 1) * ratio));
+    let s = 0; for (let j = a; j < b; j++) s += buf[j];
+    out[i] = s / Math.max(1, b - a);
+  }
+  return out;
+}
+
+function pushSamples(f32) {
+  // Micro coupé pendant la voix : on envoie du silence pour garder la chronologie
+  if ($("duck").checked && st.stream && isSpeaking()) f32 = new Float32Array(f32.length);
+  const merged = new Float32Array(st.out.length + f32.length);
+  merged.set(st.out); merged.set(f32, st.out.length); st.out = merged;
+  while (st.out.length >= CHUNK) { sendPcm(st.out.subarray(0, CHUNK)); st.out = st.out.slice(CHUNK); }
+}
+
+function sendPcm(f32, index = null) {
+  const i16 = new Int16Array(f32.length);
+  for (let i = 0; i < f32.length; i++) { const v = Math.max(-1, Math.min(1, f32[i])); i16[i] = v < 0 ? v * 32768 : v * 32767; }
+  if (!st.ws || st.ws.readyState !== 1) return;
+  if (index === null) { st.ws.send(i16.buffer); return; }            // format historique : un micro
+  const buf = new Uint8Array(2 + i16.byteLength);                      // format étiqueté : [version, micro]
+  buf[0] = 1; buf[1] = index; buf.set(new Uint8Array(i16.buffer), 2);
+  st.ws.send(buf.buffer);
+}
+
+function pushSamplesMulti(i, f32) {
+  if ($("duck").checked && st.streams.length && isSpeaking()) f32 = new Float32Array(f32.length);
+  const cap = st.srcCapture[i];
+  const merged = new Float32Array(cap.out.length + f32.length);
+  merged.set(cap.out); merged.set(f32, cap.out.length); cap.out = merged;
+  while (cap.out.length >= CHUNK) {
+    const c = cap.out.subarray(0, CHUNK);
+    let e = 0; for (let k = 0; k < c.length; k++) e += c[k] * c[k];
+    if (cap.meter) cap.meter.style.width = Math.min(100, Math.sqrt(e / c.length) * 400) + "%";
+    sendPcm(c, i); cap.out = cap.out.slice(CHUNK);
+  }
+}
+
+async function startMulti(settings) {
+  const rows = [...document.querySelectorAll(".src-row")];
+  if (!rows.length) { setState("error", "Ajoute au moins un micro."); return; }
+  const defs = rows.map((r, i) => ({
+    id: `m${i + 1}`, name: r.querySelector(".src-name").value.trim() || `Micro ${i + 1}`,
+    input: r.querySelector(".src-input").value, file: r.querySelector(".src-file").files[0],
+    language: r.querySelector(".src-lang").value || null, meter: r.querySelector(".meter-bar i"),
+  }));
+  const missing = defs.find(d => d.input === "file" && !d.file);
+  if (missing) { setState("error", `Choisis un fichier audio pour « ${missing.name} ».`); return; }
+
+  resetView();
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  const ctx = new AudioContext();
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" })));
+  st.ctx = ctx; st.nodes = []; st.srcCapture = []; st.players = []; st.streams = [];
+  const mute = ctx.createGain(); mute.gain.value = 0; mute.connect(ctx.destination);
+  st.origGain = ctx.createGain(); st.origGain.gain.value = Number($("origVol").value); st.origGain.connect(ctx.destination);
+  st.nodes.push(mute, st.origGain);
+  for (const [i, d] of defs.entries()) {
+    st.srcCapture.push({ out: new Float32Array(0), meter: d.meter });
+    const tap = new AudioWorkletNode(ctx, "pcm-tap"); tap.connect(mute);
+    tap.port.onmessage = (e) => { if (st.running) pushSamplesMulti(i, downsample(e.data, ctx.sampleRate)); };
+    let src;
+    if (d.input === "file") {
+      const a = new Audio(); a.src = URL.createObjectURL(d.file);
+      src = ctx.createMediaElementSource(a); src.connect(st.origGain); st.players.push(a);
+    } else {
+      // Gain automatique coupé : l'anti-diaphonie compare les niveaux réels des micros
+      const s = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: d.input.slice(4) },
+        channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: false } });
+      st.streams.push(s); src = ctx.createMediaStreamSource(s);
+    }
+    src.connect(tap); st.nodes.push(src, tap);
+  }
+  send({ type: "start", settings, label: $("runLabel").value.trim(), audio_sources: {
+    profile: "panel", framing: "tagged",
+    sources: defs.map(d => ({ id: d.id, name: d.name, language: d.language })) } });
+  st.multi = true; st.running = true;
+  if (st.players.length) {
+    let ended = 0;
+    st.players.forEach(p => { p.onended = () => { if (++ended === st.players.length) stopCapture(true); }; });
+    await Promise.all(st.players.map(p => p.play()));
+  }
+  setState("live", liveText() + ` · ${defs.length} micros`);
+  $("startBtn").disabled = true; $("stopBtn").disabled = false;
+}
+
+async function startCapture(opts = {}) {
+  const source = opts.file ? "file" : document.querySelector("input[name=source]:checked").value;
+  const file = opts.file || $("fileInput").files[0];
+  if (!opts.file && $("profile").value !== "panel" && source === "file" && !file) { setState("error", "Choisis d'abord un fichier audio."); return; }
+  const settings = readSettings();
+  if (opts.campaign) settings.voice = "none";   // pas de voix pendant les mesures
+  if (!settings.targets.length) { setState("error", "Coche au moins une langue de sous-titres."); return; }
+  if (!opts.campaign && $("profile").value === "panel") return startMulti(settings);
+
+  resetView();
+  st.multi = false;
+  if ("speechSynthesis" in window) speechSynthesis.cancel(); // débloque la voix (clic utilisateur)
+  const ctx = new AudioContext();
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" })));
+  const tap = new AudioWorkletNode(ctx, "pcm-tap");
+  tap.port.onmessage = (e) => { if (st.running) pushSamples(downsample(e.data, ctx.sampleRate)); };
+  const mute = ctx.createGain(); mute.gain.value = 0;
+  tap.connect(mute).connect(ctx.destination);
+
+  let src;
+  if (source === "mic") {
+    st.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+    src = ctx.createMediaStreamSource(st.stream);
+  } else {
+    const player = $("player");
+    player.src = URL.createObjectURL(file);
+    src = ctx.createMediaElementSource(player);
+    st.origGain = ctx.createGain(); st.origGain.gain.value = Number($("origVol").value);
+    src.connect(st.origGain).connect(ctx.destination); // on entend l'original (volume réglable)...
+    player.onended = () => stopCapture(true);
+    st.player = player;
+  }
+  src.connect(tap);                                     // ...et il part au serveur en même temps
+  st.ctx = ctx; st.nodes = [src, tap, mute];
+  if (st.origGain) st.nodes.push(st.origGain);
+
+  send({ type: "start", settings, label: opts.label ?? $("runLabel").value.trim(),
+         analyze: !!opts.analyze });
+  st.running = true;
+  if (st.player) await st.player.play();
+  setState("live", liveText());
+  $("startBtn").disabled = true; $("stopBtn").disabled = false;
+}
+
+function liveText() {
+  const s = st.settings;
+  const spoken = s.source === "auto" ? "langue détectée automatiquement" : NAMES[s.source].toLowerCase();
+  return `En direct : ${spoken}, sous-titres en ${s.targets.map(t => NAMES[t].toLowerCase()).join(" et ")}`;
+}
+
+function stopCapture(notify) {
+  if (!st.running) return;
+  st.running = false;
+  if (st.out.length) { sendPcm(st.out); st.out = new Float32Array(0); }
+  st.srcCapture.forEach((c, i) => { if (c.out.length) sendPcm(c.out, i); if (c.meter) c.meter.style.width = "0"; });
+  st.players.forEach(p => { p.onended = null; p.pause(); });
+  st.streams.forEach(s => s.getTracks().forEach(t => t.stop()));
+  st.srcCapture = []; st.players = []; st.streams = [];
+  if (notify) send({ type: "stop" });
+  if (st.player) { st.player.pause(); st.player.onended = null; }
+  if (st.stream) st.stream.getTracks().forEach(t => t.stop());
+  st.nodes.forEach(n => { try { n.disconnect(); } catch (_) {} });
+  if (st.ctx) st.ctx.close();
+  // Un MediaElementSource ne peut être créé qu'une fois par élément : on en recrée un
+  if (st.player) { const fresh = st.player.cloneNode(); fresh.id = "player"; st.player.replaceWith(fresh); st.player = null; }
+  st.ctx = null; st.nodes = []; st.stream = null; st.origGain = null;
+  setState("ready", "Arrêt demandé : fin de la transcription et de la traduction…");
+  $("startBtn").disabled = false; $("stopBtn").disabled = true;
+}
+
+function resetView() {
+  st.segments.clear(); st.provBy = {}; st.lastFinalBy = {}; st.unitsBy = {}; st.openBy = {}; st.pendingBy = {}; st.lang = null;
+  st.speakers = {}; st.speakerOrder = []; st.lastActive = {}; st.lastAsrSpeaker = null; $("ribbonWho").textContent = "";
+  st.voiceQueue = 0; $("sVoice").textContent = "0";
+  $("committed").textContent = ""; $("pending").textContent = ""; $("transcriptEmpty").hidden = false;
+  $("heard").innerHTML = "Langue entendue : <b>en attente</b>";
+  renderSegments(); renderBand(); renderRibbon([], []); renderFull();
+}
+
+function setState(kind, text) { $("state").className = "state " + kind; $("stateText").textContent = text; }
+
+document.querySelectorAll("input[name=source]").forEach(r => r.addEventListener("change", () => {
+  if (!r.checked) return;
+  const isFile = r.value === "file";
+  $("fileInput").hidden = !isFile; $("playerBox").hidden = !isFile; $("origField").hidden = !isFile;
+}));
+/* ---------- Campagne de tests ---------- */
+st.campaign = null;   // { files, index, analyze, rows }
+
+function campaignLabel(file, i) {
+  const base = file.name.replace(/\.[^.]+$/, "").replace(/[^\w-]+/g, "_").slice(0, 40);
+  return `camp_${String(i + 1).padStart(2, "0")}_${base}`;
+}
+function campaignState(text, cls = "") {
+  const c = st.campaign; if (!c || !c.rows[c.index]) return;
+  const el = c.rows[c.index].querySelector(".state"); el.textContent = text; el.className = "state " + cls;
+}
+async function campaignNext() {
+  const c = st.campaign; if (!c) return;
+  if (c.index >= c.files.length) {
+    st.campaign = null; $("campStart").disabled = false; $("campStop").disabled = true;
+    setState("ready", "Campagne terminée. Télécharge le journal des tests et envoie-le pour le rapport.");
+    return;
+  }
+  const file = c.files[c.index];
+  $("profile").value = "single"; syncProfileUI();
+  campaignState("Enregistrement…", "run");
+  try {
+    await startCapture({ file, label: campaignLabel(file, c.index), analyze: c.analyze, campaign: true });
+  } catch (err) { campaignState("Erreur : " + err.message, "err"); c.index++; setTimeout(campaignNext, 500); }
+}
+function onCampaignRunSaved(m) {
+  const c = st.campaign; if (!c) return;
+  if (!m.analysis) { campaignState(m.complete ? "Enregistré ✓" : "Interrompu", m.complete ? "ok" : "err"); c.index++; setTimeout(campaignNext, 1500); }
+  else campaignState("Analyse en attente…", "run");
+}
+function onAnalysisDone(m) {
+  const c = st.campaign;
+  const txt = m.error ? "Analyse impossible" :
+    Object.entries(m.resume).map(([t, r]) => `→${t} ${r.gain_delai_pct ?? "?"} %`).join(" · ");
+  if (c) { campaignState(m.error ? txt : "✓ " + txt, m.error ? "err" : "ok"); c.index++; setTimeout(campaignNext, 1500); }
+  $("campInfo").textContent = m.error ? `Analyse impossible : ${m.error}` : `Dernière analyse : ${m.test} (${m.duree_analyse_s} s). Gain de délai de la meilleure configuration indiqué pour chaque langue cible.`;
+}
+$("campStart").addEventListener("click", () => {
+  const files = [...$("campFiles").files];
+  if (!files.length) { setState("error", "Choisis au moins un fichier audio pour la campagne."); return; }
+  const list = $("campList"); list.innerHTML = "";
+  const rows = files.map((f, i) => {
+    const li = document.createElement("li");
+    li.innerHTML = '<span class="name"></span><span class="state">En attente</span>';
+    li.querySelector(".name").textContent = `${i + 1}. ${f.name}`; list.appendChild(li); return li;
+  });
+  st.campaign = { files, index: 0, analyze: $("campAnalyze").checked, rows };
+  $("campStart").disabled = true; $("campStop").disabled = false;
+  campaignNext();
+});
+$("campStop").addEventListener("click", () => {
+  const c = st.campaign; st.campaign = null;
+  if (c) c.rows.slice(c.index).forEach(li => { if (li.querySelector(".state").textContent === "En attente") li.querySelector(".state").textContent = "Annulé"; });
+  stopCapture(true); $("campStart").disabled = false; $("campStop").disabled = true;
+});
+async function fetchCampaign() {
+  const r = await (await fetch("/api/journal")).json();
+  if (!r.tests) { setState("error", "Aucun test dans le journal pour l'instant."); return null; }
+  return r;
+}
+$("campDownload").addEventListener("click", async () => {
+  const r = await fetchCampaign(); if (!r) return;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([r.content], { type: "application/json" }));
+  a.download = "journal_des_tests.jsonl"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  setState("ready", `Journal des tests : ${r.tests} test(s).`);
+});
+$("campCopy").addEventListener("click", async () => {
+  const r = await fetchCampaign(); if (!r) return;
+  try { await navigator.clipboard.writeText(r.content); setState("ready", `Journal de ${r.tests} test(s) copié.`); }
+  catch (_) { setState("error", "Copie impossible : utilise le téléchargement."); }
+});
+
+/* ---------- Configuration des micros ---------- */
+const LANG_OPTS = '<option value="">Langue de la session</option><option value="auto">Détection automatique</option>' +
+  LANGS.map(l => `<option value="${l}">${NAMES[l]}</option>`).join("");
+
+function inputOptions() {
+  return '<option value="file">Fichier audio</option>' +
+    st.devices.map((d, i) => `<option value="dev:${d.deviceId}">Micro : ${d.label || "micro " + (i + 1)}</option>`).join("");
+}
+
+function addSourceRow(data = {}) {
+  const list = $("srcList");
+  if (list.children.length >= 6) { setState("error", "6 micros au maximum."); return; }
+  const n = list.children.length + 1;
+  const row = document.createElement("div"); row.className = "src-row";
+  row.innerHTML = `<input type="text" class="src-name" placeholder="Nom de l'orateur (micro ${n})">
+    <select class="src-input" aria-label="Entrée audio">${inputOptions()}</select>
+    <input type="file" class="src-file" accept="audio/*,video/*" aria-label="Fichier audio">
+    <select class="src-lang" aria-label="Langue parlée sur ce micro">${LANG_OPTS}</select>
+    <div class="line"><div class="meter-bar" title="Niveau du micro"><i></i></div>
+      <button class="mini-btn src-del">Retirer</button></div>`;
+  row.querySelector(".src-name").value = data.name || "";
+  const input = row.querySelector(".src-input");
+  if (data.input && [...input.options].some(o => o.value === data.input)) input.value = data.input;
+  row.querySelector(".src-lang").value = data.language || "";
+  const syncFile = () => { row.querySelector(".src-file").hidden = input.value !== "file"; };
+  input.addEventListener("change", syncFile); syncFile();
+  row.querySelector(".src-del").onclick = () => row.remove();
+  list.appendChild(row);
+}
+
+async function listMics(askPermission) {
+  try {
+    if (askPermission) (await navigator.mediaDevices.getUserMedia({ audio: true })).getTracks().forEach(t => t.stop());
+    st.devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audioinput");
+  } catch (e) { setState("error", "Accès aux micros refusé : " + e.message); return; }
+  document.querySelectorAll(".src-row .src-input").forEach(sel => {
+    const v = sel.value; sel.innerHTML = inputOptions();
+    if ([...sel.options].some(o => o.value === v)) sel.value = v;
+    sel.dispatchEvent(new Event("change"));
+  });
+  setState("ready", `${st.devices.length} micro(s) détecté(s).`);
+}
+
+function syncProfileUI() {
+  const multi = $("profile").value === "panel";
+  $("multiBox").hidden = !multi;
+  $("singleSource").hidden = multi;
+  if (multi) { $("fileInput").hidden = true; $("playerBox").hidden = true; $("origField").hidden = false; }
+  else document.querySelector("input[name=source]:checked").dispatchEvent(new Event("change"));
+  if (multi && !$("srcList").children.length) { addSourceRow(); addSourceRow(); }
+}
+$("profile").addEventListener("change", syncProfileUI);
+$("addSrc").addEventListener("click", () => addSourceRow());
+$("allowMics").addEventListener("click", () => listMics(true));
+
+/* ---------- Profils enregistrés (dans ce navigateur) ---------- */
+const PROFILES_KEY = "streaming-caption-profiles";
+function readProfiles() { try { return JSON.parse(localStorage.getItem(PROFILES_KEY) || "{}"); } catch (_) { return {}; } }
+function refreshProfiles() {
+  const p = readProfiles(), sel = $("savedProfiles");
+  sel.innerHTML = Object.keys(p).length ? Object.keys(p).map(n => `<option></option>`).join("") : '<option value="">Aucun profil</option>';
+  Object.keys(p).forEach((n, i) => { sel.options[i].value = n; sel.options[i].textContent = n; });
+}
+$("saveProfile").addEventListener("click", () => {
+  const name = $("profileName").value.trim();
+  if (!name) { setState("error", "Donne un nom au profil."); return; }
+  const p = readProfiles();
+  p[name] = { profile: $("profile").value, settings: readSettings(),
+    sources: [...document.querySelectorAll(".src-row")].map(r => ({ name: r.querySelector(".src-name").value,
+      input: r.querySelector(".src-input").value, language: r.querySelector(".src-lang").value })) };
+  try { localStorage.setItem(PROFILES_KEY, JSON.stringify(p)); } catch (_) {}
+  refreshProfiles(); $("savedProfiles").value = name;
+  setState("ready", `Profil « ${name} » enregistré.`);
+});
+$("loadProfile").addEventListener("click", () => {
+  const name = $("savedProfiles").value, p = readProfiles()[name];
+  if (!p) return;
+  $("profile").value = p.profile; $("srcList").innerHTML = "";
+  (p.sources || []).forEach(addSourceRow);
+  syncProfileUI(); applySettings(p.settings); onSettingsChange();
+  setState("ready", `Profil « ${name} » chargé` + ((p.sources || []).some(s => s.input === "file") ? " : choisis à nouveau les fichiers audio." : "."));
+});
+$("delProfile").addEventListener("click", () => {
+  const p = readProfiles(); delete p[$("savedProfiles").value];
+  try { localStorage.setItem(PROFILES_KEY, JSON.stringify(p)); } catch (_) {}
+  refreshProfiles();
+});
+refreshProfiles();
+if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) listMics(false);
+
+$("startBtn").addEventListener("click", () => startCapture().catch(err => {
+  setState("error", "Impossible de démarrer l'audio : " + err.message); st.running = false;
+}));
+$("stopBtn").addEventListener("click", () => stopCapture(true));
+
+renderSegments(); renderBand(); renderFull();
+connect();
+</script>
+</body>
+</html>

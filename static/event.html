@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Événement : salles en direct</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+  :root {
+    --paper: #EDF0F5; --sheet: #F8F9FB; --ink: #172033; --muted: #6F7A8E; --rule: #CBD2DE;
+    --cobalt: #2A4FE0; --cobalt-soft: #DCE3FB; --amber: #B87C0C; --amber-soft: #F3E3C0;
+    --radius-s: 4px; --radius-m: 8px;
+    font-family: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 16px; color: var(--ink); background: var(--paper);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px clamp(16px, 4vw, 48px) 48px; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 1.7rem; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 28px; max-width: 70ch; line-height: 1.5; }
+  /* Les places de session : l'information clé de la page */
+  .places { display: flex; align-items: stretch; gap: 14px; margin-bottom: 30px; flex-wrap: wrap; }
+  .place {
+    flex: 1 1 200px; min-height: 96px; padding: 14px 16px; border-radius: var(--radius-m);
+    border: 2px dashed var(--rule); background: transparent; display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .place.busy { border: 2px solid var(--cobalt); background: var(--sheet); }
+  .place .n { font-size: .9rem; color: var(--muted); }
+  .place .who { font-size: 1.35rem; font-weight: 700; }
+  .place.free .who { color: var(--muted); font-weight: 400; font-size: 1.05rem; }
+  .place .meta { font-size: .9rem; color: var(--muted); }
+  .capacity { font-size: 1.05rem; margin: 0 0 12px; }
+  .capacity b { font-size: 1.3rem; }
+  table { width: 100%; border-collapse: collapse; background: var(--sheet); border-radius: var(--radius-m); overflow: hidden; }
+  th, td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--rule); vertical-align: middle; }
+  th { font-size: .88rem; color: var(--muted); font-weight: 700; background: #EEF1F6; }
+  tr:last-child td { border-bottom: 0; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--rule); margin-right: 7px; }
+  .running .dot { background: var(--cobalt); }
+  .st-running .dot { background: var(--cobalt); }
+  .st-starting .dot, .st-stopping .dot { background: var(--amber); }
+  .st-error .dot { background: #B3261E; }
+  .st-created .dot, .st-stopped .dot { background: transparent; border: 2px solid var(--rule); width: 9px; height: 9px; }
+  .st-error { color: #B3261E; font-weight: 700; }
+  .st-msg { display: block; font-size: .82rem; font-weight: 400; max-width: 34ch; }
+  .place.error { border: 2px solid #B3261E; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  a.btn, button.btn {
+    font: inherit; font-size: .9rem; text-decoration: none; color: var(--cobalt); border: 1px solid var(--cobalt);
+    background: #fff; padding: 5px 10px; border-radius: var(--radius-s); cursor: pointer; white-space: nowrap;
+  }
+  a.btn.primary, button.btn.primary { background: var(--cobalt); color: #fff; }
+  :focus-visible { outline: 3px solid var(--cobalt); outline-offset: 2px; }
+  .table-wrap { overflow-x: auto; }
+  form { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 26px 0 0; }
+  input[type=text] { font: inherit; padding: 7px 10px; border: 1px solid var(--rule); border-radius: var(--radius-s); min-width: 220px; }
+  .empty { padding: 22px; color: var(--muted); }
+  .note { color: var(--muted); font-size: .9rem; margin-top: 18px; line-height: 1.5; max-width: 80ch; }
+  .err { color: #B3261E; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Salles de l'événement</h1>
+  <p class="lead">Chaque salle a une régie, qui capte l'orateur, et un écran public pour le public. Une salle occupe une place pendant qu'elle traduit.</p>
+
+  <p class="capacity" id="capacity">Chargement…</p>
+  <div class="places" id="places" aria-label="Places de session"></div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Salle</th><th>État</th><th>Langues</th><th>Régie</th><th>Public</th><th>Durée</th><th>Phrases</th><th>Ouvrir</th></tr></thead>
+      <tbody id="rooms"></tbody>
+    </table>
+  </div>
+
+  <form id="newRoom">
+    <label for="roomName">Nouvelle salle</label>
+    <input type="text" id="roomName" placeholder="ex. amphi-a" maxlength="30" required>
+    <button class="btn primary" type="submit">Ouvrir la régie</button>
+  </form>
+  <p class="note" id="models"></p>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const NAMES = { en: "anglais", de: "allemand", fr: "français", auto: "détection auto" };
+const fmt = (s) => s == null ? "–" : s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, "0")}`;
+const langs = (st) => st ? `${NAMES[st.source] || st.source} → ${(st.targets || []).map(t => NAMES[t] || t).join(", ")}` : "–";
+const link = (path, room) => `${path}?room=${encodeURIComponent(room)}`;
+const STATES = { created: "Créée", starting: "Démarrage…", running: "En cours", stopping: "Arrêt en cours…",
+                 stopped: "Arrêtée", error: "Erreur" };
+const stateOf = (x) => x.state || (x.running ? "running" : "stopped");
+let confirmDelete = null;                     // salle dont la suppression attend confirmation
+function alertMsg(text) { $("models").textContent = text; }
+const deletable = (x) => ["created", "stopped", "error"].includes(stateOf(x)) && !x.producer && !x.viewers && x.slot == null;
+
+function cell(text) { const td = document.createElement("td"); td.textContent = text; return td; }
+
+async function refresh() {
+  let r;
+  try { r = await (await fetch("/api/rooms")).json(); }
+  catch (_) { $("capacity").innerHTML = '<span class="err">Serveur injoignable : vérifie qu\'il est lancé.</span>'; return; }
+  $("capacity").innerHTML = `<b>${r.active} / ${r.max_sessions}</b> sessions en cours`;
+  // Les places
+  const bySlot = {}; r.rooms.forEach(x => { if (x.slot != null) bySlot[x.slot] = x; });
+  $("places").innerHTML = "";
+  for (let i = 0; i < r.max_sessions; i++) {
+    const room = bySlot[i];
+    const d = document.createElement("div"); d.className = "place " + (room ? "busy" : "free");
+    d.innerHTML = '<span class="n"></span><span class="who"></span><span class="meta"></span>';
+    d.querySelector(".n").textContent = `Place ${i + 1}`;
+    d.querySelector(".who").textContent = room ? room.name : "libre";
+    const st = room ? stateOf(room) : null;
+    d.querySelector(".meta").textContent = room ? `${st === "running" ? "" : STATES[st] + " · "}${langs(room.settings)} · ${fmt(room.running_s)}` : "prête pour une salle";
+    $("places").appendChild(d);
+  }
+  // Le tableau des salles
+  const body = $("rooms"); body.innerHTML = "";
+  if (!r.rooms.length) {
+    const tr = document.createElement("tr"); const td = document.createElement("td");
+    td.colSpan = 8; td.className = "empty"; td.textContent = "Aucune salle pour l'instant : ouvre une régie avec le formulaire ci-dessous.";
+    tr.appendChild(td); body.appendChild(tr);
+  }
+  r.rooms.forEach(x => {
+    const tr = document.createElement("tr"); if (x.running) tr.className = "running";
+    const name = cell(x.name); name.style.fontWeight = "700"; tr.appendChild(name);
+    const st = stateOf(x);
+    const state = document.createElement("td"); state.className = `st-${st}`; state.innerHTML = '<span class="dot"></span>';
+    state.append(STATES[st] || st);
+    if (st === "error" && x.error) { const m = document.createElement("span"); m.className = "st-msg"; m.textContent = x.error; state.appendChild(m); }
+    tr.appendChild(state);
+    tr.appendChild(cell(langs(x.settings)));
+    tr.appendChild(cell(x.producer ? "connectée" : "fermée"));
+    tr.appendChild(cell(`${x.viewers} écran${x.viewers > 1 ? "s" : ""}`));
+    tr.appendChild(cell(fmt(x.running_s)));
+    tr.appendChild(cell(String(x.segments)));
+    const act = document.createElement("td"); const box = document.createElement("div"); box.className = "actions";
+    const a1 = document.createElement("a"); a1.className = "btn"; a1.href = link("/", x.name); a1.target = "_blank"; a1.textContent = "Régie";
+    const a2 = document.createElement("a"); a2.className = "btn"; a2.href = link("/viewer", x.name); a2.target = "_blank"; a2.textContent = "Écran public";
+    const b = document.createElement("button"); b.className = "btn"; b.type = "button"; b.textContent = "Copier le lien public";
+    b.onclick = async () => {
+      const url = new URL(link("/viewer", x.name), location.href).href;
+      try { await navigator.clipboard.writeText(url); b.textContent = "Lien copié"; } catch (_) { prompt("Lien de l'écran public :", url); }
+      setTimeout(() => b.textContent = "Copier le lien public", 1500);
+    };
+    box.append(a1, a2, b);
+    if (deletable(x)) {                       // salle arrêtée, sans régie ni écran : on peut la retirer
+      const del = document.createElement("button"); del.className = "btn"; del.type = "button";
+      del.textContent = confirmDelete === x.name ? "Confirmer la suppression" : "Supprimer";
+      del.onclick = async () => {
+        if (confirmDelete !== x.name) { confirmDelete = x.name; del.textContent = "Confirmer la suppression"; return; }
+        confirmDelete = null;
+        const res = await fetch(`/api/rooms/${encodeURIComponent(x.name)}`, { method: "DELETE" });
+        if (!res.ok) { const j = await res.json().catch(() => ({})); alertMsg(j.error || "Suppression impossible"); }
+        refresh();
+      };
+      box.appendChild(del);
+    }
+    act.appendChild(box); tr.appendChild(act);
+    body.appendChild(tr);
+  });
+}
+
+async function models() {
+  try {
+    const i = await (await fetch("/api/info")).json();
+    const e = i.event || {};
+    $("models").textContent = `Modèles : Whisper ${i.whisper.model} sur ${i.whisper.device || "…"} (${e.whisper_workers || 1} sessions en parallèle), `
+      + `SaT et Marian sur le processeur (${e.marian_instances === "per_session" ? "traducteurs propres à chaque session" : "traducteurs partagés"}). `
+      + (i.ready ? "" : `Chargement : ${i.status}`);
+  } catch (_) {}
+}
+
+$("newRoom").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const n = $("roomName").value.trim(); if (!n) return;
+  window.open(link("/", n), "_blank"); $("roomName").value = "";
+});
+refresh(); models();
+setInterval(refresh, 2000); setInterval(models, 10000);
+</script>
+</body>
+</html>

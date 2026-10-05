@@ -1,0 +1,52 @@
+{
+  "segments": [
+    [
+      "Hello everyone. Today I will explain how attention works in transformers.",
+      "en"
+    ],
+    [
+      "Bonjour à tous.",
+      "fr"
+    ],
+    [
+      "Je vais maintenant répondre à votre question.",
+      "fr"
+    ]
+  ],
+  "translations": [
+    [
+      1,
+      "fr",
+      "[en>fr] Hello everyone. Today I will explain how attention works in transformers."
+    ],
+    [
+      2,
+      "en",
+      "[fr>en] Bonjour à tous."
+    ],
+    [
+      3,
+      "en",
+      "[fr>en] Je vais maintenant répondre à votre question."
+    ]
+  ],
+  "speak": [
+    [
+      1,
+      "fr"
+    ],
+    [
+      2,
+      "en"
+    ],
+    [
+      3,
+      "en"
+    ]
+  ],
+  "langs": [
+    "en",
+    "fr"
+  ],
+  "done": true
+}

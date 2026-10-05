@@ -1,0 +1,96 @@
+# Réglages du serveur. Valeurs identiques aux défauts de app/config.py :
+# une clé absente reprend sa valeur par défaut.
+config_version: 3
+
+server:
+  host: 0.0.0.0
+  port: 8000
+  # HTTPS : obligatoire pour le micro depuis un AUTRE ordinateur que le serveur
+  ssl_certfile: ""
+  ssl_keyfile: ""
+
+session:                     # langues par défaut au chargement de la page
+  source: auto               # auto | en | de | fr
+  targets: [fr]
+  voice: auto
+
+asr:
+  model: large-v3-turbo      # multilingue : small (rapide) | medium | large-v3-turbo
+  device: cuda               # repli automatique sur CPU si CUDA est indisponible
+  compute_type: float16      # int8_float16 pour économiser la VRAM
+  beam_size: 5               # 3 salles en parallèle sur un seul GPU : mettre 1 (voir README)
+  min_chunk_s: 1.0
+  buffer_trim_s: 15.0
+  vad_filter: true
+  lcp_levenshtein: 1
+  lang_detect_window_s: 3.0
+  lang_switch_prob: 0.7
+
+segmentation:
+  model: sat-3l-sm
+  backend: onnx              # onnx | torch
+  sat_input: raw             # raw | nopunct | normalized
+  th_high: 0.5
+  th_low: 0.25
+  pause_s: 0.5
+  long_pause_s: 1.2
+  th_pause_floor: 0.05
+  lookahead_words: 1
+  min_words: 3
+  max_words: 30
+
+translation:
+  model_pattern: "Helsinki-NLP/opus-mt-{src}-{tgt}"
+  preload: [en-fr, fr-en]    # paires chargées au démarrage (les autres à la demande)
+  pivot: en
+  num_beams: 2
+  max_new_tokens: 200
+  provisional: true
+  mask_k: 3
+  use_context: true
+  meaning_units:
+    enabled: false
+    k: 3
+    min_words: 5
+    sat_floor: 0.05
+    speak_units: false
+
+tts:
+  engine: browser            # browser | piper
+  piper_voices_dir: voices
+  piper_voices:
+    en: en_US-lessac-medium
+    de: de_DE-thorsten-medium
+    fr: fr_FR-siwis-medium
+  length_scale: 0.95
+  simultaneous_policy: floor # floor : une seule voix à la fois | queue : tout lire
+
+cpu:
+  torch_threads: 4           # partagé par les salles : environ « nombre de cœurs / 3 »
+
+logs:
+  enabled: true
+  runs_dir: runs
+
+sources:
+  profile: single            # single | panel | mixed | custom
+  list: []
+  max_active_asr: 2
+  crosstalk:
+    enabled: true
+    level_margin_db: 6
+    text_similarity: 0.8
+
+diarization:
+  engine: none
+  similarity_threshold: 0.65
+  min_turn_s: 1.0
+  enrollment: false
+
+event:                       # plusieurs salles (sessions) en même temps
+  max_sessions: 3            # salles qui traduisent en même temps
+  whisper_workers: 3         # transcriptions Whisper en parallèle (un seul modèle GPU)
+  marian_instances: per_session   # per_session | shared
+  sat_parallel: true         # SaT (ONNX) appelé en parallèle par les salles
+  default_room: salle-1
+  viewer_history: 200        # messages montrés à un écran public qui arrive en cours

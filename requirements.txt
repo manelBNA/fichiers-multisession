@@ -1,0 +1,23 @@
+# Serveur
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pyyaml>=6.0
+numpy>=1.24
+
+# ASR sur GPU (CTranslate2, n'utilise pas PyTorch)
+faster-whisper>=1.0
+
+# Segmentation SaT sur CPU (+ ONNX Runtime CPU)
+wtpsplit[onnx-cpu]>=2.1
+
+# Traduction Marian sur CPU
+torch>=2.1
+transformers
+sentencepiece
+sacremoses
+
+# Optionnel : voix traduite côté serveur (tts.engine: piper), licence GPL-3.0
+# piper-tts>=1.3
+
+# Évaluation et analyse automatique (chrF, BLEU)
+sacrebleu

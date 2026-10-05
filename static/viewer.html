@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sous-titres en direct</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+  :root {
+    --night: #0E1A2E;      /* fond : salle sombre, projecteur */
+    --night-2: #16253D;    /* barre du haut */
+    --text: #F3F0E6;       /* sous-titre définitif */
+    --dim: #8EA1BD;        /* provisoire, anciennes lignes */
+    --live: #6F95FF;       /* indicateur « en direct » */
+    --warn: #F2B35B;
+    --size: 2.4rem;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--night); color: var(--text);
+    font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+    display: grid; grid-template-rows: auto 1fr;
+    padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  header {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+    padding: 10px 18px; background: var(--night-2);
+  }
+  header h1 { font-size: 1.05rem; font-weight: 700; margin: 0 auto 0 0; }
+  .state { display: inline-flex; align-items: center; gap: 8px; font-size: .95rem; color: var(--dim); }
+  .state i { width: 10px; height: 10px; border-radius: 50%; background: var(--dim); }
+  .state.live { color: var(--text); }
+  .state.live i { background: var(--live); box-shadow: 0 0 0 4px rgba(111,149,255,.25); }
+  .state.off i { background: var(--warn); }
+  select, button {
+    font: inherit; font-size: .95rem; color: var(--text); background: var(--night);
+    border: 1px solid #2E4366; border-radius: 6px; padding: 6px 10px;
+  }
+  button { cursor: pointer; min-width: 40px; }
+  :focus-visible { outline: 3px solid var(--live); outline-offset: 2px; }
+  main {
+    display: flex; flex-direction: column; justify-content: flex-end;
+    padding: 24px clamp(18px, 6vw, 80px) 40px; overflow: hidden;
+  }
+  .lines { max-width: 34ch; font-size: var(--size); line-height: 1.32; }
+  .line { margin: 0 0 .45em; transition: opacity .4s; }
+  .line.old { opacity: .38; }
+  .line.older { opacity: .18; }
+  .line.new { animation: rise .35s ease-out; }
+  .line .who { display: block; font-size: .5em; color: var(--dim); margin-bottom: .1em; }
+  .current { min-height: 2.7em; }
+  .current .unit { color: var(--text); }
+  .current .prov { color: var(--dim); }
+  .empty { color: var(--dim); font-size: 1.3rem; max-width: 40ch; line-height: 1.5; }
+  @keyframes rise { from { transform: translateY(.6em); opacity: 0; } to { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .line.new { animation: none; } .line { transition: none; } }
+  @media (max-width: 600px) { :root { --size: 1.6rem; } header h1 { width: 100%; } }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Sous-titres en direct</h1>
+  <span class="state off" id="state" role="status"><i aria-hidden="true"></i><span id="stateText">Connexion…</span></span>
+  <label>Salle <select id="room" aria-label="Salle"></select></label>
+  <label>Langue <select id="lang" aria-label="Langue des sous-titres"></select></label>
+  <button id="smaller" aria-label="Texte plus petit">A−</button>
+  <button id="bigger" aria-label="Texte plus grand">A+</button>
+</header>
+<main>
+  <div class="lines" id="lines" aria-live="polite"></div>
+  <p class="empty" id="empty">Les sous-titres apparaîtront ici dès que la conférence commencera.</p>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const NAMES = { en: "Anglais", de: "Allemand", fr: "Français", orig: "Langue de l'orateur" };
+const params = new URLSearchParams(location.search);
+const st = {
+  room: params.get("room") || "", lang: params.get("lang") || localStorage.getItem("viewer-lang") || "",
+  segments: new Map(), units: {}, prov: {}, lastFinal: 0, open: "", speakers: {}, ws: null, retry: null,
+};
+
+function setState(kind, text) { $("state").className = "state " + kind; $("stateText").textContent = text; }
+
+async function loadRooms() {
+  try {
+    const r = await (await fetch("/api/rooms")).json();
+    const names = r.rooms.map(x => x.name);
+    if (st.room && !names.includes(st.room)) names.unshift(st.room);
+    if (!st.room) st.room = (r.rooms.find(x => x.running) || r.rooms[0] || { name: "salle-1" }).name;
+    if (!names.includes(st.room)) names.unshift(st.room);
+    $("room").innerHTML = names.map(n => `<option></option>`).join("");
+    names.forEach((n, i) => { $("room").options[i].value = n; $("room").options[i].textContent = n; });
+    $("room").value = st.room;
+  } catch (_) { /* le serveur peut être en train de démarrer */ }
+}
+
+function setLanguages(settings) {
+  const targets = (settings && settings.targets) || ["en", "fr", "de"];
+  const langs = [...new Set([...targets, "orig"])];
+  if (!langs.includes(st.lang)) st.lang = langs[0];
+  $("lang").innerHTML = langs.map(l => `<option value="${l}">${NAMES[l] || l}</option>`).join("");
+  $("lang").value = st.lang;
+}
+
+function textFor(seg) {
+  if (st.lang === "orig" || seg.lang === st.lang) return seg.text;
+  return seg.tr[st.lang] || "";
+}
+
+function render(newId) {
+  const segs = [...st.segments.values()].sort((a, b) => a.id - b.id).filter(s => textFor(s));
+  const last = segs.slice(-3);
+  const box = $("lines"); box.innerHTML = "";
+  const multi = Object.keys(st.speakers).length > 1;
+  last.forEach((s, i) => {
+    const p = document.createElement("p");
+    p.className = "line" + (i < last.length - 2 ? " older" : i < last.length - 1 ? " old" : "") + (s.id === newId ? " new" : "");
+    if (multi && st.speakers[s.speaker]) {
+      const w = document.createElement("span"); w.className = "who"; w.textContent = st.speakers[s.speaker].name; p.appendChild(w);
+    }
+    p.appendChild(document.createTextNode(textFor(s)));
+    box.appendChild(p);
+  });
+  const cur = document.createElement("p"); cur.className = "line current";
+  if (st.lang === "orig") {
+    const o = document.createElement("span"); o.className = "prov"; o.textContent = st.open; cur.appendChild(o);
+  } else {
+    const src = Object.keys(st.prov)[0] || Object.keys(st.units)[0];
+    const units = (st.units[src] && st.units[src].byLang[st.lang]) || [];
+    if (units.length) { const u = document.createElement("span"); u.className = "unit"; u.textContent = units.join(" ") + " "; cur.appendChild(u); }
+    const pv = st.prov[src] && st.prov[src][st.lang];
+    if (pv && (!units.length || pv.after_units)) { const s = document.createElement("span"); s.className = "prov"; s.textContent = pv.text + (pv.hidden ? " …" : ""); cur.appendChild(s); }
+  }
+  box.appendChild(cur);
+  $("empty").hidden = segs.length > 0 || cur.textContent.trim() !== "";
+}
+
+function onMessage(m, replay = false) {
+  const src = m.source || "main";
+  switch (m.type) {
+    case "status":
+      if (m.state === "running") {
+        st.segments.clear(); st.units = {}; st.prov = {}; st.lastFinal = 0; st.open = "";
+        setLanguages(m.settings); setState("live", "En direct");
+        if (m.speakers) m.speakers.forEach(s => st.speakers[s.id] = s);
+      }
+      if (m.state === "error") setState("off", "Interruption technique : la traduction va reprendre");
+      break;
+    case "speakers": (m.speakers || []).forEach(s => st.speakers[s.id] = s); break;
+    case "sat": st.open = (m.words || []).join(" "); break;
+    case "segment":
+      st.segments.set(m.id, { ...m, tr: {} }); st.open = "";
+      if (st.units[src] && st.units[src].key === m.open_key) delete st.units[src];
+      break;
+    case "unit": {
+      let u = st.units[src];
+      if (!u || u.key !== m.key) u = st.units[src] = { key: m.key, byLang: {} };
+      (u.byLang[m.lang] = u.byLang[m.lang] || []).push(m.text);
+      break;
+    }
+    case "translation":
+      if (m.final) {
+        const s = st.segments.get(m.id); if (s) s.tr[m.lang] = m.text;
+        st.lastFinal = Math.max(st.lastFinal, m.id); delete st.prov[src];
+      } else if (m.id > st.lastFinal) {
+        (st.prov[src] = st.prov[src] || {})[m.lang] = m;
+      }
+      break;
+    case "done": case "run_saved": setState("off", "Session terminée"); break;
+    default: return;
+  }
+  if (!replay) render(m.type === "translation" && m.final ? m.id : null);
+}
+
+function connect() {
+  clearTimeout(st.retry);
+  if (st.ws) { st.ws.onclose = null; st.ws.close(); }
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${proto}://${location.host}/ws?room=${encodeURIComponent(st.room)}&role=viewer`);
+  st.ws = ws;
+  ws.onmessage = (ev) => {
+    const m = JSON.parse(ev.data);
+    if (m.type === "hello") {
+      st.room = m.room; $("room").value = m.room; $("title").textContent = `Sous-titres · ${m.room}`;
+      st.segments.clear(); st.units = {}; st.prov = {}; st.lastFinal = 0;
+      setLanguages(m.settings);
+      (m.history || []).forEach(h => onMessage(h, true));
+      setState(m.running ? "live" : "off", m.running ? "En direct" : "En attente du début");
+      history.replaceState(null, "", `?room=${encodeURIComponent(st.room)}&lang=${st.lang}`);
+      render(); return;
+    }
+    onMessage(m);
+  };
+  ws.onclose = () => { setState("off", "Reconnexion…"); st.retry = setTimeout(connect, 2000); };
+}
+
+$("room").addEventListener("change", () => { st.room = $("room").value; connect(); });
+$("lang").addEventListener("change", () => {
+  st.lang = $("lang").value; try { localStorage.setItem("viewer-lang", st.lang); } catch (_) {}
+  history.replaceState(null, "", `?room=${encodeURIComponent(st.room)}&lang=${st.lang}`); render();
+});
+function resize(delta) {
+  const cur = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--size"));
+  document.documentElement.style.setProperty("--size", Math.min(5, Math.max(1.2, cur + delta)) + "rem");
+}
+$("smaller").addEventListener("click", () => resize(-0.3));
+$("bigger").addEventListener("click", () => resize(0.3));
+
+loadRooms().then(connect);
+setInterval(loadRooms, 15000);
+</script>
+</body>
+</html>

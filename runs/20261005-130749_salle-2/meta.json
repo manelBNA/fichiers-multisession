@@ -1,0 +1,118 @@
+{
+  "label": "",
+  "debut": "2026-10-05T13:07:49",
+  "reglages_langues": {
+    "source": "auto",
+    "targets": [
+      "fr"
+    ],
+    "voice": "auto",
+    "mu_enabled": false,
+    "mu_k": 3
+  },
+  "politique_de_coupe": {
+    "th_high": 0.5,
+    "th_low": 0.25,
+    "pause_s": 0.5,
+    "long_pause_s": 1.2,
+    "th_pause_floor": 0.05,
+    "lookahead_words": 1,
+    "min_words": 3,
+    "max_words": 30,
+    "sat_input": "raw"
+  },
+  "modeles": {
+    "whisper": {
+      "model": "large-v3-turbo",
+      "device": "cuda",
+      "gpu_error": null
+    },
+    "sat": {
+      "model": "sat-3l-sm",
+      "device": "cpu",
+      "backend": "onnx"
+    },
+    "marian": {
+      "loaded": [
+        "en-fr",
+        "fr-en"
+      ],
+      "device": "cpu"
+    },
+    "tts": {
+      "engine": "browser"
+    },
+    "event": {
+      "max_sessions": 3,
+      "whisper_workers": 3,
+      "marian_instances": "per_session"
+    },
+    "load_s": {
+      "sat": 11.2,
+      "marian": 5.5,
+      "whisper": 4.6
+    },
+    "ready": true,
+    "status": "Prêt",
+    "error": null
+  },
+  "config": {
+    "asr": {
+      "model": "large-v3-turbo",
+      "device": "cuda",
+      "compute_type": "float16",
+      "beam_size": 5,
+      "min_chunk_s": 1.0,
+      "buffer_trim_s": 15.0,
+      "vad_filter": true,
+      "lcp_levenshtein": 1,
+      "lang_detect_window_s": 3.0,
+      "lang_switch_prob": 0.7
+    },
+    "segmentation": {
+      "model": "sat-3l-sm",
+      "backend": "onnx",
+      "sat_input": "raw",
+      "th_high": 0.5,
+      "th_low": 0.25,
+      "pause_s": 0.5,
+      "long_pause_s": 1.2,
+      "th_pause_floor": 0.05,
+      "lookahead_words": 1,
+      "min_words": 3,
+      "max_words": 30
+    },
+    "translation": {
+      "model_pattern": "Helsinki-NLP/opus-mt-{src}-{tgt}",
+      "preload": [
+        "en-fr",
+        "fr-en"
+      ],
+      "pivot": "en",
+      "num_beams": 2,
+      "max_new_tokens": 200,
+      "provisional": true,
+      "mask_k": 3,
+      "use_context": true,
+      "meaning_units": {
+        "enabled": false,
+        "k": 3,
+        "min_words": 5,
+        "sat_floor": 0.05,
+        "speak_units": false
+      }
+    }
+  },
+  "profil": "single",
+  "sources": [
+    {
+      "id": "main",
+      "name": "Micro principal",
+      "mode": "single",
+      "language": null,
+      "expected_speakers": 1,
+      "index": 0
+    }
+  ],
+  "salle": "salle-2"
+}

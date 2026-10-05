@@ -1,0 +1,102 @@
+{
+  "label": "",
+  "termine_normalement": true,
+  "duree_s": 199.396,
+  "phrases": 14,
+  "mots_par_phrase": {
+    "n": 14,
+    "moyenne": 19.571,
+    "mediane": 19.5,
+    "p90": 27,
+    "max": 33
+  },
+  "raisons_de_coupe": {
+    "sat+pause": 11,
+    "sat": 2,
+    "pause": 1
+  },
+  "langues_parlees": {
+    "de": 14
+  },
+  "phrases_par_orateur": {
+    "S1": 14
+  },
+  "phrases_par_source": {
+    "main": 14
+  },
+  "phrases_ecartees_doublons": 0,
+  "delai_affichage_par_mot_s": {
+    "en": {
+      "n": 279,
+      "moyenne": 14.889,
+      "mediane": 14.63,
+      "p90": 22.459,
+      "max": 27.539
+    }
+  },
+  "unites_de_sens": {
+    "validees": 0,
+    "rejetees": 0,
+    "latence_s": null
+  },
+  "voix_non_lues_paroles_simultanees": 0,
+  "langues_traduites": {
+    "en": "anglais"
+  },
+  "temps_calcul_ms": {
+    "asr": {
+      "n": 139,
+      "moyenne": 1204.324,
+      "mediane": 953,
+      "p90": 2141,
+      "max": 4533
+    },
+    "sat": {
+      "n": 126,
+      "moyenne": 31.121,
+      "mediane": 16.85,
+      "p90": 28.7,
+      "max": 362.1
+    },
+    "mt_final": {
+      "n": 14,
+      "moyenne": 1751.071,
+      "mediane": 1208.5,
+      "p90": 4001,
+      "max": 4226
+    },
+    "mt_provisoire": {
+      "n": 102,
+      "moyenne": 502.892,
+      "mediane": 366.5,
+      "p90": 962,
+      "max": 3073
+    }
+  },
+  "latence_coupe_s": {
+    "n": 14,
+    "moyenne": 6.067,
+    "mediane": 6.407,
+    "p90": 7.742,
+    "max": 8.078
+  },
+  "retard_mots_valides_s": {
+    "n": 138,
+    "moyenne": 1.916,
+    "mediane": 1.52,
+    "p90": 3.41,
+    "max": 9.77
+  },
+  "latence_traduction_definitive_s": {
+    "en": {
+      "n": 14,
+      "moyenne": 7.935,
+      "mediane": 7.79,
+      "p90": 10.817,
+      "max": 11.97
+    }
+  },
+  "changements_de_langue": 0,
+  "changements_de_reglages_pendant_le_test": 0,
+  "erreurs": []
+}

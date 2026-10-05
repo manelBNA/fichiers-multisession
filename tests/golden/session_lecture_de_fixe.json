@@ -1,0 +1,66 @@
+{
+  "segments": [
+    [
+      "Die zukünftige Entwicklung textiler Werkstoffe wird durch Nachhaltigkeit geprägt.",
+      "de"
+    ],
+    [
+      "Digitale Zwillinge begleiten dabei sämtliche Prozessschritte.",
+      "de"
+    ],
+    [
+      "Mit Hilfe künstlicher Intelligenz können Prozessparameter automatisch angepasst werden.",
+      "de"
+    ]
+  ],
+  "translations": [
+    [
+      1,
+      "en",
+      "[de>en] Die zukünftige Entwicklung textiler Werkstoffe wird durch Nachhaltigkeit geprägt."
+    ],
+    [
+      1,
+      "fr",
+      "[de>fr] Die zukünftige Entwicklung textiler Werkstoffe wird durch Nachhaltigkeit geprägt."
+    ],
+    [
+      2,
+      "en",
+      "[de>en] Digitale Zwillinge begleiten dabei sämtliche Prozessschritte."
+    ],
+    [
+      2,
+      "fr",
+      "[de>fr] Digitale Zwillinge begleiten dabei sämtliche Prozessschritte."
+    ],
+    [
+      3,
+      "en",
+      "[de>en] Mit Hilfe künstlicher Intelligenz können Prozessparameter automatisch angepasst werden."
+    ],
+    [
+      3,
+      "fr",
+      "[de>fr] Mit Hilfe künstlicher Intelligenz können Prozessparameter automatisch angepasst werden."
+    ]
+  ],
+  "speak": [
+    [
+      1,
+      "en"
+    ],
+    [
+      2,
+      "en"
+    ],
+    [
+      3,
+      "en"
+    ]
+  ],
+  "langs": [
+    "de"
+  ],
+  "done": true
+}
