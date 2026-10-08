@@ -57,6 +57,7 @@ class Room:
         self.error: str | None = None
         self.transitions: deque = deque(maxlen=50)   # (heure, état) : suivi et tests
         self.producer_token: object | None = None
+        self.speakers: dict = {}               # jeton de connexion -> {"name": …} (speakers distants)
         self.session = None
         self.slot: int | None = None
         self.started_at: float | None = None
@@ -135,8 +136,8 @@ class RoomManager:
                 return False, f"Salle « {name} » inconnue."
             if room.slot is not None or room.state not in IDLE_STATES:
                 return False, f"La salle « {name} » est en cours ({room.state}) : arrête-la d'abord."
-            if room.producer_token is not None or room.subscribers:
-                return False, f"La salle « {name} » a encore des connexions (régie ou écrans)."
+            if room.producer_token is not None or room.speakers or room.subscribers:
+                return False, f"La salle « {name} » a encore des connexions (régie, speakers ou écrans)."
             del self.rooms[name]
         log.info("Salle « %s » supprimée", name)
         return True, ""
@@ -146,10 +147,28 @@ class RoomManager:
     def claim_producer(self, room: Room, token: object) -> bool:
         """Une seule régie par salle (sinon deux sources audio se mélangeraient)."""
         with self._lock:
-            if room.producer_token is not None:
+            if room.producer_token is not None or room.speakers:
                 return False
             room.producer_token = token
             return True
+
+    def claim_speaker(self, room: Room, token: object, name: str) -> str | None:
+        """Place de speaker (chacun sur son appareil). Renvoie un message d'erreur si refusé."""
+        limit = max(1, self.cfg.event.max_speakers)
+        with self._lock:
+            if room.producer_token is not None:
+                return (f"La salle « {room.name} » est pilotée par une régie : "
+                        "les speakers ne peuvent pas s'y connecter.")
+            if len(room.speakers) >= limit:
+                names = ", ".join(s["name"] for s in room.speakers.values())
+                return (f"Limite atteinte : {limit} speakers déjà connectés dans la salle "
+                        f"« {room.name} » ({names}). Rejoins-la comme participant (/viewer).")
+            room.speakers[token] = {"name": name}
+            return None
+
+    def release_speaker(self, room: Room, token: object) -> None:
+        with self._lock:
+            room.speakers.pop(token, None)
 
     def release_producer(self, room: Room, token: object) -> None:
         with self._lock:
@@ -211,6 +230,8 @@ class RoomManager:
             room.set_state(STARTING)
         pool_for = getattr(self.registry, "pool_for", None)
         session.pool = pool_for(slot) if pool_for else None
+        if hasattr(session.pool, "clear_failures"):
+            session.pool.clear_failures()       # relancer la salle = réessayer les paires en échec
         room.session = session
         try:
             session.start(data.get("settings"), str(data.get("label", ""))[:60],
@@ -257,14 +278,23 @@ class RoomManager:
                     room.set_state(ERROR, "threads arrêtés sans fin de session")
 
     # ---------- tableau de bord ----------
+    @staticmethod
+    def _translation_errors(room: Room) -> list[str]:
+        """Paires Marian en échec de chargement dans le jeu de traducteurs de la salle."""
+        pool = getattr(room.session, "pool", None) if room.running else None
+        failures = getattr(pool, "failure_messages", None)
+        return failures() if failures else []
+
     def overview(self) -> dict:
         self.reap()
         with self._lock:
             rooms = list(self.rooms.values())
             participants = {r.name: sorted(set(r.participants.values())) for r in rooms}
+            speakers = {r.name: [s["name"] for s in r.speakers.values()] for r in rooms}
         now = time.time()
         return {
             "max_sessions": self.cfg.event.max_sessions,
+            "max_speakers": self.cfg.event.max_speakers,
             "active": self.active,
             "rooms": [{
                 "name": r.name,
@@ -274,12 +304,14 @@ class RoomManager:
                 "running": r.running,
                 "slot": r.slot,
                 "producer": r.producer_token is not None,
+                "speakers": speakers.get(r.name, []),
                 "viewers": r.viewers,
                 "participants": participants.get(r.name, []),
                 "settings": r.settings,
                 "segments": r.segments,
                 "running_s": round(now - r.started_at) if r.started_at else None,
                 "idle_s": round(now - r.last_activity) if r.last_activity else None,
+                "translation_errors": self._translation_errors(r),
             } for r in sorted(rooms, key=lambda r: r.name)],
         }
 

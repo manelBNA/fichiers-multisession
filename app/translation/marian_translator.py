@@ -13,11 +13,47 @@ from __future__ import annotations
 import logging
 import re
 import threading
+import time
 
 from app.config import MtCfg
 
 log = logging.getLogger("mt")
 _SENT = re.compile(r"(?<=[.!?…])\s+")
+
+# Un seul chargement Marian à la fois dans TOUT le processus (toutes places, toutes salles,
+# analyse comprise) : deux from_pretrained de transformers en parallèle peuvent échouer avec
+# « Cannot copy out of meta tensor; no data! », et après cet échec même un chargement seul
+# échoue. Le verrou ne couvre QUE la création du modèle : la traduction reste parallèle.
+_LOAD_LOCK = threading.Lock()
+LOAD_ATTEMPTS = 3              # tentatives par demande de chargement
+RETRY_DELAYS_S = (1.0, 3.0)    # pause entre deux tentatives (hors du verrou global)
+RETRY_AFTER_S = 30.0           # après 3 échecs : nouvel essai automatique au plus tôt dans 30 s
+
+
+class MarianLoadError(RuntimeError):
+    """Chargement d'une paire en échec (temporaire) : signalé, jamais masqué par le pivot."""
+
+
+def _model_not_found(exc: BaseException) -> bool:
+    """Le modèle n'existe pas sur Hugging Face (paire non publiée) : échec définitif."""
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        if type(exc).__name__ in ("RepositoryNotFoundError", "EntryNotFoundError"):
+            return True
+        if "is not a valid model identifier" in str(exc):
+            return True
+        exc = exc.__cause__ or exc.__context__
+    return False
+
+
+def _load_translator(name: str, cfg: "MtCfg") -> "MarianTranslator":
+    t0 = time.perf_counter()
+    with _LOAD_LOCK:
+        waited = time.perf_counter() - t0
+        if waited > 0.05:
+            log.info("Chargement de %s : %.1f s d'attente du verrou de chargement Marian", name, waited)
+        return MarianTranslator(name, cfg)
 
 
 def split_sentences(text: str) -> list[str]:
@@ -94,7 +130,8 @@ class MarianPool:
     def __init__(self, cfg: MtCfg):
         self.cfg = cfg
         self.models: dict[tuple[str, str], MarianTranslator] = {}
-        self.missing: set[tuple[str, str]] = set()
+        self.missing: set[tuple[str, str]] = set()     # modèle inexistant : passage par le pivot
+        self.failures: dict[tuple[str, str], dict] = {}  # échecs temporaires : nouvel essai prévu
         self._locks: dict[tuple[str, str], threading.Lock] = {}
         self._locks_guard = threading.Lock()
 
@@ -108,6 +145,11 @@ class MarianPool:
             return self._locks.setdefault(key, threading.Lock())
 
     def get(self, src: str, tgt: str) -> MarianTranslator | None:
+        """Modèle de la paire ; None si le modèle n'existe pas (pivot).
+
+        Lève MarianLoadError si le chargement échoue LOAD_ATTEMPTS fois de suite : la paire
+        n'est pas marquée inexistante, un nouvel essai a lieu après RETRY_AFTER_S.
+        """
         key = (src, tgt)
         if key in self.models:
             return self.models[key]
@@ -116,20 +158,58 @@ class MarianPool:
                 return self.models[key]
             if key in self.missing:
                 return None
+            failed = self.failures.get(key)
+            if failed and time.monotonic() < failed["retry_at"]:
+                wait = failed["retry_at"] - time.monotonic()
+                raise MarianLoadError(f"{failed['message']} Nouvel essai automatique dans {wait:.0f} s.")
             name = self.cfg.model_pattern.format(src=src, tgt=tgt)
             log.info("Chargement de %s (premier usage : téléchargement d'environ 300 Mo)…", name)
-            try:
-                model = MarianTranslator(name, self.cfg)
-                model.warmup()
-            except Exception as exc:
-                log.warning("Paire %s -> %s indisponible (%s)", src, tgt, exc)
-                self.missing.add(key)
-                return None
-            self.models[key] = model
-            return model
+            last = None
+            for attempt in range(1, LOAD_ATTEMPTS + 1):
+                try:
+                    model = _load_translator(name, self.cfg)
+                    model.warmup()
+                except Exception as exc:
+                    if _model_not_found(exc):
+                        log.warning("Paire %s -> %s : le modèle %s n'existe pas (%s)", src, tgt, name, exc)
+                        self.missing.add(key)
+                        self.failures.pop(key, None)
+                        return None
+                    last = exc
+                    log.error("Chargement de %s : échec %d/%d", name, attempt, LOAD_ATTEMPTS,
+                              exc_info=exc)
+                    if attempt < LOAD_ATTEMPTS:
+                        time.sleep(RETRY_DELAYS_S[min(attempt, len(RETRY_DELAYS_S)) - 1])
+                    continue
+                if failed or attempt > 1:
+                    log.info("Chargement de %s réussi (tentative %d) : paire %s -> %s disponible",
+                             name, attempt, src, tgt)
+                self.failures.pop(key, None)
+                self.models[key] = model
+                return model
+            message = (f"Traduction {src} → {tgt} indisponible : le chargement de {name} a échoué "
+                       f"{LOAD_ATTEMPTS} fois ({type(last).__name__}: {last}).")
+            self.failures[key] = {"message": message, "retry_at": time.monotonic() + RETRY_AFTER_S,
+                                  "attempts": (failed["attempts"] if failed else 0) + LOAD_ATTEMPTS}
+            log.error("%s Nouvel essai dans %.0f s.", message, RETRY_AFTER_S)
+            raise MarianLoadError(f"{message} Nouvel essai automatique dans {RETRY_AFTER_S:.0f} s.")
+
+    def failure_messages(self) -> list[str]:
+        """Paires en échec de chargement (tableau de bord)."""
+        return [f["message"] for f in list(self.failures.values())]
+
+    def clear_failures(self) -> None:
+        """Nouvelle session : les paires en échec seront rechargées dès leur premier usage."""
+        if self.failures:
+            log.info("Nouvel essai demandé pour : %s",
+                     ", ".join(f"{s}-{t}" for s, t in list(self.failures)))
+        self.failures.clear()
 
     def route(self, src: str, tgt: str) -> list[MarianTranslator]:
-        """Modèle direct si possible, sinon chaîne par la langue pivot."""
+        """Modèle direct si possible, sinon chaîne par la langue pivot (modèle inexistant).
+
+        Un échec de chargement (MarianLoadError) n'est PAS remplacé par le pivot : il remonte.
+        """
         direct = self.get(src, tgt)
         if direct:
             return [direct]

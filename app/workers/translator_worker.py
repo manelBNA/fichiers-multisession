@@ -84,6 +84,14 @@ class TranslatorWorker(threading.Thread):
             self.unit_checks.append((key, source, speaker, lang, words_i, words_ik, end_s))
             self.cond.notify()
 
+    def add_source(self, source_id: str) -> bool:
+        """Un micro arrive en cours de session (speaker distant). Refusé si la fin est engagée."""
+        with self.cond:
+            if self.finishing:
+                return False
+            self._waiting_sources.add(source_id)
+            return True
+
     def finish(self, source_id: str | None = None) -> None:
         """Un micro a terminé ; on s'arrête quand tous les micros attendus ont terminé."""
         with self.cond:
@@ -148,16 +156,23 @@ class TranslatorWorker(threading.Thread):
             prev = self.context.get((speaker, lang, tgt))
             mu = self.mu_state.pop((key, tgt), None) if key else None
             units, rest = 0, None
-            if mu and mu["count"] and self._starts_with_units(text, mu):
-                # Des unités de sens ont déjà été affichées : on les garde telles quelles
-                # (décodage forcé) et on ne traduit que la suite.
-                rest = self._forced(lang, tgt, prev, text, mu["V"])
-            if rest is not None:
-                out, used_ctx, pivot, units = f"{mu['V']} {rest}".strip(), bool(prev), False, mu["units"]
-                spoken_part[tgt] = rest
-            else:
-                out, used_ctx, pivot = self.pool.translate_with_context(
-                    lang, tgt, prev[0] if prev else None, prev[1] if prev else None, text)
+            try:
+                if mu and mu["count"] and self._starts_with_units(text, mu):
+                    # Des unités de sens ont déjà été affichées : on les garde telles quelles
+                    # (décodage forcé) et on ne traduit que la suite.
+                    rest = self._forced(lang, tgt, prev, text, mu["V"])
+                if rest is not None:
+                    out, used_ctx, pivot, units = f"{mu['V']} {rest}".strip(), bool(prev), False, mu["units"]
+                    spoken_part[tgt] = rest
+                else:
+                    out, used_ctx, pivot = self.pool.translate_with_context(
+                        lang, tgt, prev[0] if prev else None, prev[1] if prev else None, text)
+            except Exception as exc:   # une paire en échec ne prive pas les autres langues
+                log.warning("Traduction finale %s -> %s du segment %s impossible : %s",
+                            lang, tgt, seg_id, exc)
+                self.emit({"type": "error", "where": "translation", "lang": tgt, "id": seg_id,
+                           "message": str(exc)})
+                continue
             self.context[(speaker, lang, tgt)] = (text, out)
             results[tgt] = out
             msg = {"type": "translation", "id": seg_id, "src": lang, "lang": tgt,

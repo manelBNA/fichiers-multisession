@@ -99,6 +99,12 @@ async def viewer_page():
     return FileResponse(ROOT / "static" / "viewer.html")
 
 
+@app.get("/speaker")
+async def speaker_page():
+    """Page d'un speaker : chacun sur son appareil, jusqu'à event.max_speakers par salle."""
+    return FileResponse(ROOT / "static" / "speaker.html")
+
+
 @app.get("/event")
 async def event_page():
     """Tableau de bord de l'événement : toutes les salles et leur état."""
@@ -177,9 +183,11 @@ async def delete_room(name: str):
 
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
-    """/ws?room=<salle>&role=producer|viewer[&participant_id=<id>]
+    """/ws?room=<salle>&role=producer|speaker|viewer[&participant_id=<id>][&name=<nom>&lang=<en|de|fr>]
 
     producer (par défaut) : la régie d'une salle ; elle envoie l'audio et pilote la session.
+    speaker : un orateur sur son propre appareil (au plus event.max_speakers par salle) ;
+              il envoie {"type": "join", "settings": …} puis son audio PCM16 16 kHz.
     viewer : un écran public ; il reçoit seulement les messages de sa salle.
     Sans paramètre : salle par défaut, régie (comportement historique).
     """
@@ -196,7 +204,8 @@ async def serve_connection(ws: WebSocket, room_name: str | None) -> None:
     """Une connexion = une seule salle, choisie à l'ouverture."""
     await ws.accept()
     room = rooms.get(room_name)
-    role = "viewer" if ws.query_params.get("role") == "viewer" else "producer"
+    asked = ws.query_params.get("role")
+    role = asked if asked in ("viewer", "speaker") else "producer"
     participant = clean_participant(ws.query_params.get("participant_id"))
     out_q: asyncio.Queue = asyncio.Queue()
 
@@ -207,6 +216,9 @@ async def serve_connection(ws: WebSocket, room_name: str | None) -> None:
 
     if role == "viewer":
         await serve_viewer(ws, room, out_q, sender, participant)
+        return
+    if role == "speaker":
+        await serve_speaker(ws, room, out_q, sender, participant)
         return
 
     token = object()
@@ -253,6 +265,111 @@ async def serve_connection(ws: WebSocket, room_name: str | None) -> None:
             await asyncio.to_thread(session.close)
         finally:
             rooms.release_producer(room, token)
+
+
+_join_locks: dict[str, asyncio.Lock] = {}
+
+
+def clean_speaker_name(value: str | None) -> str:
+    cleaned = re.sub(r"[\x00-\x1f<>]+", "", (value or "").strip())[:40].strip()
+    return cleaned or "Speaker"
+
+
+async def serve_speaker(ws: WebSocket, room, out_q: asyncio.Queue, sender,
+                        participant: str | None = None) -> None:
+    """Speaker sur son propre appareil (comme Chamk) : au plus event.max_speakers par salle.
+
+    Le 1er speaker qui envoie « join » démarre la session de la salle (une place) ; les
+    suivants ajoutent leur micro à cette session. Chaque phrase porte l'orateur (S1, S2…).
+    Quand le dernier speaker s'arrête, la fin est traduite et la place est libérée.
+    """
+    name = clean_speaker_name(ws.query_params.get("name") or participant)
+    lang = ws.query_params.get("lang") or None
+    token = object()
+    refused = rooms.claim_speaker(room, token, name)
+    if refused:
+        where = "room" if room.producer_token is not None else "speaker_limit"
+        await ws.send_text(json.dumps({"type": "error", "where": where, "message": refused,
+                                       "room": room.name}, ensure_ascii=False))
+        await ws.close()
+        return
+    loop = asyncio.get_running_loop()
+    rooms.subscribe(room, out_q, "speaker", participant)
+    send_task = asyncio.create_task(sender())
+    await ws.send_text(json.dumps({"type": "hello", "role": "speaker", "room": room.name,
+                                   "session_id": room.name, "participant_id": participant,
+                                   "name": name, "state": room.state, "running": room.running,
+                                   "settings": room.settings, "info": registry.info(),
+                                   "max_speakers": cfg.event.max_speakers,
+                                   "event": rooms.overview()}, ensure_ascii=False))
+    session, source, speaker = None, None, None
+
+    async def send(msg: dict) -> None:
+        await ws.send_text(json.dumps(msg, ensure_ascii=False))
+
+    try:
+        while True:
+            msg = await ws.receive()
+            if msg["type"] == "websocket.disconnect":
+                break
+            if msg.get("bytes") is not None:
+                if session is not None and source is not None:
+                    session.push_audio(msg["bytes"], source=source)
+                continue
+            if not msg.get("text"):
+                continue
+            data = json.loads(msg["text"])
+            kind = data.get("type")
+            if kind in ("join", "start"):
+                if source is not None:
+                    continue                                   # déjà en train de parler
+                if not registry.ready:
+                    await send({"type": "error", "where": "server",
+                                "message": "Les modèles sont encore en cours de chargement."})
+                    continue
+                async with _join_locks.setdefault(room.name, asyncio.Lock()):
+                    current = room.session
+                    try:
+                        if room.running and current is not None and getattr(current, "remote", False):
+                            source, speaker = await asyncio.to_thread(current.add_source, name, lang)
+                            session = current
+                        else:
+                            new = Session(registry, cfg, loop, Fanout(room),
+                                          analysis=analysis_worker, room=room.name)
+                            error = await asyncio.to_thread(rooms.start_session, room, new, {
+                                "settings": data.get("settings"),
+                                "label": data.get("label") or f"speakers-{room.name}",
+                                "audio_sources": {"profile": "panel", "framing": "remote",
+                                                  "sources": [{"id": "p1", "name": name,
+                                                               "language": lang}]}})
+                            if error:
+                                await send({"type": "error", "where": "capacity", "message": error,
+                                            "rooms": rooms.overview()})
+                                continue
+                            session = new
+                            source, speaker = session.first_source()
+                    except RuntimeError as exc:                # session en train de se terminer
+                        await send({"type": "error", "where": "speaker", "message": str(exc)})
+                        continue
+                await send({"type": "floor", "granted": True, "speaker": speaker["id"],
+                            "name": speaker["name"], "source": source, "room": room.name,
+                            "settings": session.settings.as_dict()})
+            elif kind == "stop":
+                if session is not None and source is not None:
+                    session.remove_source(source)
+                    await send({"type": "floor", "granted": False, "speaker": speaker["id"],
+                                "source": source, "room": room.name})
+                    source = None
+            elif kind == "rename_speaker" and session is not None and speaker is not None:
+                session.rename_speaker(speaker["id"], str(data.get("name", "")))
+    except Exception as exc:  # déconnexion brutale, etc.
+        log.info("Speaker fermé : %s", exc)
+    finally:
+        rooms.unsubscribe(room, out_q)
+        send_task.cancel()
+        if session is not None and source is not None:
+            session.remove_source(source)          # sa fin d'audio est quand même traduite
+        rooms.release_speaker(room, token)
 
 
 async def serve_viewer(ws: WebSocket, room, out_q: asyncio.Queue, sender,

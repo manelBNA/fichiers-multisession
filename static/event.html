@@ -44,6 +44,7 @@
   .st-created .dot, .st-stopped .dot { background: transparent; border: 2px solid var(--rule); width: 9px; height: 9px; }
   .st-error { color: #B3261E; font-weight: 700; }
   .st-msg { display: block; font-size: .82rem; font-weight: 400; max-width: 34ch; }
+  .st-warn { color: #8A5300; }
   .place.error { border: 2px solid #B3261E; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; }
   a.btn, button.btn {
@@ -93,7 +94,7 @@ const STATES = { created: "Créée", starting: "Démarrage…", running: "En cou
 const stateOf = (x) => x.state || (x.running ? "running" : "stopped");
 let confirmDelete = null;                     // salle dont la suppression attend confirmation
 function alertMsg(text) { $("models").textContent = text; }
-const deletable = (x) => ["created", "stopped", "error"].includes(stateOf(x)) && !x.producer && !x.viewers && x.slot == null;
+const deletable = (x) => ["created", "stopped", "error"].includes(stateOf(x)) && !x.producer && !(x.speakers || []).length && !x.viewers && x.slot == null;
 
 function cell(text) { const td = document.createElement("td"); td.textContent = text; return td; }
 
@@ -129,22 +130,25 @@ async function refresh() {
     const state = document.createElement("td"); state.className = `st-${st}`; state.innerHTML = '<span class="dot"></span>';
     state.append(STATES[st] || st);
     if (st === "error" && x.error) { const m = document.createElement("span"); m.className = "st-msg"; m.textContent = x.error; state.appendChild(m); }
+    (x.translation_errors || []).forEach(e => { const m = document.createElement("span"); m.className = "st-msg st-warn"; m.textContent = "⚠ " + e; state.appendChild(m); });
     tr.appendChild(state);
     tr.appendChild(cell(langs(x.settings)));
-    tr.appendChild(cell(x.producer ? "connectée" : "fermée"));
+    const spk = x.speakers || [];
+    tr.appendChild(cell(x.producer ? "connectée" : spk.length ? `${spk.length} speaker${spk.length > 1 ? "s" : ""} : ${spk.join(", ")}` : "fermée"));
     tr.appendChild(cell(`${x.viewers} écran${x.viewers > 1 ? "s" : ""}`));
     tr.appendChild(cell(fmt(x.running_s)));
     tr.appendChild(cell(String(x.segments)));
     const act = document.createElement("td"); const box = document.createElement("div"); box.className = "actions";
     const a1 = document.createElement("a"); a1.className = "btn"; a1.href = link("/", x.name); a1.target = "_blank"; a1.textContent = "Régie";
     const a2 = document.createElement("a"); a2.className = "btn"; a2.href = link("/viewer", x.name); a2.target = "_blank"; a2.textContent = "Écran public";
+    const a3 = document.createElement("a"); a3.className = "btn"; a3.href = link("/speaker", x.name); a3.target = "_blank"; a3.textContent = "Speaker";
     const b = document.createElement("button"); b.className = "btn"; b.type = "button"; b.textContent = "Copier le lien public";
     b.onclick = async () => {
       const url = new URL(link("/viewer", x.name), location.href).href;
       try { await navigator.clipboard.writeText(url); b.textContent = "Lien copié"; } catch (_) { prompt("Lien de l'écran public :", url); }
       setTimeout(() => b.textContent = "Copier le lien public", 1500);
     };
-    box.append(a1, a2, b);
+    box.append(a1, a3, a2, b);
     if (deletable(x)) {                       // salle arrêtée, sans régie ni écran : on peut la retirer
       const del = document.createElement("button"); del.className = "btn"; del.type = "button";
       del.textContent = confirmDelete === x.name ? "Confirmer la suppression" : "Supprimer";

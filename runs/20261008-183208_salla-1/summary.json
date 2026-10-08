@@ -1,0 +1,38 @@
+{
+  "label": "",
+  "termine_normalement": true,
+  "duree_s": 4.79,
+  "phrases": 0,
+  "mots_par_phrase": null,
+  "raisons_de_coupe": {},
+  "langues_parlees": {},
+  "phrases_par_orateur": {},
+  "phrases_par_source": {},
+  "phrases_ecartees_doublons": 0,
+  "delai_affichage_par_mot_s": {},
+  "unites_de_sens": {
+    "validees": 0,
+    "rejetees": 0,
+    "latence_s": null
+  },
+  "voix_non_lues_paroles_simultanees": 0,
+  "langues_traduites": {},
+  "temps_calcul_ms": {
+    "asr": {
+      "n": 1,
+      "moyenne": 1178,
+      "mediane": 1178,
+      "p90": 1178,
+      "max": 1178
+    },
+    "sat": null,
+    "mt_final": null,
+    "mt_provisoire": null
+  },
+  "latence_coupe_s": null,
+  "retard_mots_valides_s": null,
+  "latence_traduction_definitive_s": {},
+  "changements_de_langue": 0,
+  "changements_de_reglages_pendant_le_test": 0,
+  "erreurs": []
+}

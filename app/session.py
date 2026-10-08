@@ -57,6 +57,10 @@ class Session:
         self.logger: RunLogger | None = None
         self.failed: str | None = None    # erreur fatale d'un thread (session en erreur)
         self._fatal_lock = threading.Lock()
+        # Speakers distants (page /speaker) : chacun sur son appareil, ajoutés en cours de session
+        self.remote = False
+        self._next_id = None              # numérotation des phrases commune à tous les micros
+        self._sources_lock = threading.Lock()
 
     # Appelé depuis les threads : on repasse dans la boucle asyncio
     def emit(self, msg: dict) -> None:
@@ -147,6 +151,8 @@ class Session:
         status = lambda text: self.emit({"type": "status", "state": "loading", "text": text})
         pool = self.translation_pool
         pool.preload(pairs, on_status=status)
+        for message in getattr(pool, "failure_messages", lambda: [])():
+            self.emit({"type": "error", "where": "translation", "message": message})
         self.emit({"type": "status", "state": "models", "loaded": pool.loaded()})
 
     def start(self, values: dict | None = None, label: str = "",
@@ -160,7 +166,9 @@ class Session:
             self.settings.update(values)
         self.profile, self.sources, self.source_warnings = resolve_sources(self.cfg.sources,
                                                                            sources)
-        multi = len(self.sources) > 1
+        # « remote » : speakers chacun sur son appareil ; d'autres micros peuvent s'ajouter
+        self.remote = bool(sources and sources.get("framing") == "remote")
+        multi = len(self.sources) > 1 or self.remote
         self.tagged_audio = bool(sources and sources.get("framing") == "tagged")
         if self.cfg.logs.enabled:
             self.logger = RunLogger(self.cfg.logs.runs_dir, label, {
@@ -174,7 +182,8 @@ class Session:
                 "salle": self.room,
             }, room=self.room)
             self.emit({"type": "run_started", "path": str(self.logger.dir)})
-        threading.Thread(target=self._preload, daemon=True).start()
+        threading.Thread(target=self._preload, daemon=True,
+                         name=f"marian-preload-{self.room}").start()
         for warning in self.source_warnings:
             self.emit({"type": "status", "state": "warning", "text": warning})
 
@@ -188,10 +197,13 @@ class Session:
             with id_lock:
                 return next(counter)
 
+        self._next_id = next_id
         self.speakers = SpeakerRegistry()
         self.pipelines, self.segments_info, self._spoken = {}, {}, []
         crosstalk = c.sources.crosstalk or {}
-        use_mixer = multi and crosstalk.get("enabled", True)
+        # Anti-diaphonie seulement pour des micros d'un même appareil (horloges alignées) :
+        # des speakers distants démarrent à des instants différents.
+        use_mixer = multi and crosstalk.get("enabled", True) and not self.remote
         self.automixer = Automixer(float(crosstalk.get("level_margin_db", 6))) if use_mixer else None
         duplicates = (DuplicateFilter(float(crosstalk.get("text_similarity", 0.8)))
                       if use_mixer else None)
@@ -221,6 +233,56 @@ class Session:
                    "settings": self.settings.as_dict(), "profile": self.profile,
                    "sources": [vars(src) for src in self.sources],
                    "speakers": self.speakers.as_list()})
+        if self.remote:
+            self.emit({"type": "speakers", "speakers": self.speakers.as_list()})
+
+    def add_source(self, name: str, language: str | None = None) -> tuple[str, dict]:
+        """Speaker distant qui rejoint une session en cours : un pipeline (ASR + SaT) de plus.
+
+        Renvoie (identifiant du micro, orateur). RuntimeError si la session ne l'accepte pas.
+        """
+        from app.sources import SourceConfig
+        with self._sources_lock:
+            if not self.remote or self.translator is None or not self.pipelines:
+                raise RuntimeError("Aucune session de speakers en cours dans cette salle.")
+            index = max((p.source.index for p in self.pipelines.values()), default=-1) + 1
+            sid = f"p{index + 1}"
+            lang = language if language in SUPPORTED_LANGS else None
+            src = SourceConfig(id=sid, name=(name or f"Speaker {index + 1}")[:40],
+                               language=lang, index=index)
+            if not self.translator.add_source(sid):
+                raise RuntimeError("La session de la salle se termine : réessaie dans quelques secondes.")
+            speaker = self.speakers.add(sid, name=src.name, lang=lang)
+            c = self.cfg
+            pipe = SourcePipeline(src, speaker, self.registry, c, self.settings, self.policy,
+                                  self.translator, self.emit, self._next_id, multi_source=True,
+                                  automixer=None, duplicate_filter=None,
+                                  thread_tag=f"{self.room}:" if self.room else "",
+                                  on_fatal=self._fatal)
+            self.sources = self.sources + [src]
+            self.pipelines = {**self.pipelines, sid: pipe}
+            self.by_index = {**self.by_index, index: pipe}
+            pipe.start()
+        if self.logger is not None:
+            self.logger.log_in("speaker_joined", {"source": sid, "speaker": speaker.id, "name": src.name})
+        self.emit({"type": "speakers", "speakers": self.speakers.as_list()})
+        return sid, {"id": speaker.id, "name": speaker.name, "source": sid}
+
+    def remove_source(self, source_id: str) -> None:
+        """Le speaker a fini (Stop ou page fermée) : la fin de son audio est transcrite et
+        traduite. La session s'arrête quand plus aucun speaker n'envoie d'audio."""
+        pipe = self.pipelines.get(source_id)
+        if pipe is not None and pipe.alive:
+            if self.logger is not None:
+                self.logger.log_in("speaker_left", {"source": source_id})
+            pipe.stop()
+
+    def first_source(self) -> tuple[str, dict] | None:
+        """Le micro et l'orateur créés au démarrage (1er speaker distant)."""
+        for sid, pipe in self.pipelines.items():
+            spk = pipe.speaker
+            return sid, {"id": spk.id, "name": spk.name, "source": sid}
+        return None
 
     def push_audio(self, data: bytes, source: str | None = None) -> None:
         """Bloc audio reçu du navigateur.
@@ -260,7 +322,8 @@ class Session:
             self.logger.log_in("settings", values)
         self.settings.update(values)
         if self.running:
-            threading.Thread(target=self._preload, daemon=True).start()
+            threading.Thread(target=self._preload, daemon=True,
+                         name=f"marian-preload-{self.room}").start()
         self.emit({"type": "settings", "settings": self.settings.as_dict()})
 
     def rename_speaker(self, speaker_id: str, name: str) -> None:

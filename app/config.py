@@ -115,6 +115,7 @@ class EventCfg:
     sat_parallel: bool = True          # SaT (ONNX) appelé en parallèle par les sessions
     default_room: str = "salle-1"      # salle utilisée quand l'interface n'en précise pas
     viewer_history: int = 200          # messages gardés pour un spectateur qui arrive en cours
+    max_speakers: int = 2              # speakers (chacun sur son appareil) par salle
 
 
 @dataclass

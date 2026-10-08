@@ -47,6 +47,7 @@ Le principe :
 | Page | URL | Rôle |
 |---|---|---|
 | Régie | `/?room=amphi-a` | Capte l'orateur (micro ou fichier) et pilote la salle. **Une seule régie par salle.** |
+| Speaker | `/speaker?room=amphi-a&name=Alice` | Un orateur sur **son propre appareil** (micro ou fichier). **Au plus 2 speakers par salle** (`event.max_speakers`). Voir section 10. |
 | Écran public | `/viewer?room=amphi-a` | Affiche les sous-titres. Autant d'écrans que voulu (vidéoprojecteur, téléphones). |
 | Tableau de bord | `/event` | Les 3 places, l'état de chaque salle, les liens, la suppression d'une salle arrêtée. |
 
@@ -296,6 +297,7 @@ event:
   sat_parallel: true         # SaT appelé en parallèle par les salles
   default_room: salle-1      # salle utilisée sans ?room=
   viewer_history: 200        # messages montrés à un écran public qui arrive en cours
+  max_speakers: 2            # speakers par salle, chacun sur son appareil
 ```
 
 ---
@@ -310,3 +312,54 @@ event:
 | Participants | Chaque connexion a sa propre file, abonnée à une seule salle, choisie à l'ouverture. |
 | Journaux | Un dossier unique par test, avec le nom de la salle. |
 | Erreurs | Une panne arrête uniquement les threads de sa salle et ne libère que sa place. |
+
+---
+
+## 10. Plusieurs speakers dans une salle (chacun sur son appareil)
+
+Fonctionnement calqué sur la plateforme Chamk : chaque orateur ouvre `/speaker` sur **son**
+ordinateur ou téléphone, les participants ouvrent `/viewer`.
+
+```
+ Speaker A (appareil 1) ──audio──┐
+                                 ├─► Session de la salle ─► Fanout ─► speakers + écrans de la salle
+ Speaker B (appareil 2) ──audio──┘     un pipeline ASR+SaT par speaker, traduction commune
+```
+
+### Protocole
+
+```
+/ws?room=amphi-a&role=speaker&name=Alice&lang=de      (lang : en | de | fr | auto)
+  ← {"type": "hello", "role": "speaker", "max_speakers": 2, …}
+  → {"type": "join", "settings": {"source": "de", "targets": ["en"]}}
+  ← {"type": "floor", "granted": true, "speaker": "S1", "name": "Alice", "source": "p1"}
+  → audio PCM16 16 kHz (binaire, format historique, sans en-tête)
+  → {"type": "stop"}     ← {"type": "floor", "granted": false, …}
+```
+
+- **Le 1er speaker** qui envoie `join` démarre la session de la salle : elle prend une place
+  (refus « Capacité atteinte » si les 3 places sont prises). Ses réglages (langues) sont ceux
+  de la salle.
+- **Les suivants** ajoutent leur micro à la session en cours (`Session.add_source`) : un
+  pipeline ASR + SaT de plus, ses propres files, son orateur (`S2`…). La traduction, la
+  numérotation des phrases et la diffusion restent communes à la salle.
+- **Limite** : au plus `event.max_speakers` (2) speakers connectés ; le suivant reçoit
+  `{"type": "error", "where": "speaker_limit", "message": "Limite atteinte : 2 speakers …"}`.
+- **Régie ou speakers** : une salle pilotée par une régie refuse les speakers (`where: "room"`),
+  et une salle qui a des speakers refuse une régie.
+- **Arrêt** : quand un speaker s'arrête (ou ferme sa page), la fin de son audio est transcrite et
+  traduite ; les autres continuent. La session s'arrête et libère sa place quand **le dernier**
+  speaker a fini. Un speaker qui arrive pendant cette fin reçoit `where: "speaker"` et réessaie.
+- **Anti-diaphonie désactivée** entre speakers distants : leurs horloges audio ne sont pas
+  alignées (chacun démarre à son propre instant).
+- **Capture** : la page `/speaker` capte dans un AudioContext à 16 kHz ; c'est le navigateur qui
+  rééchantillonne (pas de rééchantillonnage bloc par bloc).
+
+| Fichier | Rôle |
+|---|---|
+| `app/main.py` | `serve_speaker` : rôle `speaker`, `join` / `stop`, prise de parole (`floor`) |
+| `app/rooms.py` | `claim_speaker` / `release_speaker` : limite par salle, exclusion régie / speakers, liste dans `/api/rooms` |
+| `app/session.py` | `add_source`, `remove_source`, `first_source`, mode `framing: "remote"` |
+| `app/workers/translator_worker.py` | `add_source` : un micro attendu de plus avant la fin |
+| `static/speaker.html` | Page d'un speaker |
+| `tests/test_multispeaker.py` | Attribution S1/S2 sans mélange, arrivée en cours, départ d'un speaker, limite, exclusion régie, protocole |

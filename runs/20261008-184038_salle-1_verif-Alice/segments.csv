@@ -1,0 +1,6 @@
+﻿id;langue;raison;proba;debut_s;fin_s;mots;latence_coupe_s;texte;traduction_fr;contexte_fr;pivot_fr;calcul_ms_fr;latence_traduction_s_fr;source;orateur;delai_moyen_mot_s_fr;unites_de_sens
+1;en;sat+pause;1.0;0.75;2.09;3;1.325;Good morning everyone.;Bonjour tout le monde.;False;False;95;1.42;p1;S1;1.86;0
+2;en;sat+pause;0.785;0.78;2.98;6;5.591;Hi, this is Dan from Berlin.;Salut, c'est Dan de Berlin.;False;False;151;5.742;p2;S2;6.475;0
+3;en;sat+pause;0.999;2.73;4.85;6;3.752;This is Alice speaking from London.;C'est Alice qui parle de Londres.;False;False;286;4.158;p1;S1;4.945;0
+4;en;sat+pause;1.0;3.44;5.54;7;6.781;I am the third speaker from Berlin.;Je suis le troisième orateur de Berlin.;True;False;253;7.035;p2;S2;7.872;0
+5;en;sat+pause;1.0;5.41;8.07;7;4.912;The textile meeting in London starts now.;La rencontre textile à Londres commence maintenant.;True;False;230;5.143;p1;S1;6.14;0

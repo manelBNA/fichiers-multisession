@@ -94,3 +94,4 @@ event:                       # plusieurs salles (sessions) en même temps
   sat_parallel: true         # SaT (ONNX) appelé en parallèle par les salles
   default_room: salle-1
   viewer_history: 200        # messages montrés à un écran public qui arrive en cours
+  max_speakers: 2            # speakers par salle, chacun sur son appareil (page /speaker)
